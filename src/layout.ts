@@ -1,5 +1,5 @@
 import type { CommLink, Direction, Group, LegendItem, OrgChart, OrgNode, RefKind } from './model'
-import { visit } from './model'
+import { clone, visit } from './model'
 import { computeCompliance, REF_KIND_LABEL } from './compliance'
 import { metrics as M } from './theme'
 
@@ -995,7 +995,38 @@ function layoutSwimlane(chart: OrgChart): Layout {
   return assemble(chart, placed, hierarchyConnectors(chart, placed))
 }
 
-export function layoutChart(chart: OrgChart): Layout {
+/**
+ * Return a copy of the chart with WBS outline numbers prepended to every
+ * visible box's title (1, 1.1, 1.1.1 ...). Hidden containers are transparent:
+ * their visible children join the parent level's sequence. Purely a view
+ * transform — the stored chart (and the editor) keep clean titles.
+ */
+export function withWbsNumbers(chart: OrgChart): OrgChart {
+  const next = clone(chart)
+  const walk = (list: OrgNode[], prefix: string) => {
+    let idx = 0
+    const process = (nodes: OrgNode[]) => {
+      for (const n of nodes) {
+        if (n.variant === 'hidden') {
+          process(n.children ?? [])
+          continue
+        }
+        idx += 1
+        const num = prefix ? `${prefix}.${idx}` : `${idx}`
+        n.title = n.title ? `${num}  ${n.title}` : num
+        walk(n.children ?? [], num)
+      }
+    }
+    process(list)
+  }
+  walk(next.roots, '')
+  return next
+}
+
+export function layoutChart(input: OrgChart): Layout {
+  // WBS numbering is a view concern: bake outline numbers into titles on a copy
+  // so the deterministic layout and exports need no structural change.
+  const chart = input.meta.showWbsNumbers ? withWbsNumbers(input) : input
   const mode = chart.meta.layout ?? 'tree'
   if (mode === 'radial') return layoutRadial(chart)
   if (mode === 'layered') return layoutLayered(chart)

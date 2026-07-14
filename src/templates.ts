@@ -659,11 +659,89 @@ function mentorProtege(): OrgChart {
   }
 }
 
+/** Template 8 — a program Work Breakdown Structure. A clean tree; the WBS
+ *  outline numbers (1, 1.1, 1.1.1 ...) are added by the WBS-numbers view, which
+ *  this template turns on, so numbering stays automatic as elements are added. */
+function wbs(): OrgChart {
+  const leaf = (title: string): OrgNode => node({ title, variant: 'tertiary', width: 172 })
+  const elem = (title: string, children: OrgNode[]): OrgNode =>
+    node({ title, variant: 'secondary', width: 190, children })
+  return {
+    version: 1,
+    meta: { title: 'Program Work Breakdown Structure', showTitle: true, showWbsNumbers: true },
+    roots: [
+      node({
+        title: 'Program',
+        variant: 'primary',
+        width: 200,
+        children: [
+          elem('Program Management', [leaf('Planning & Control'), leaf('Risk & Quality')]),
+          elem('Systems Engineering', [leaf('Requirements'), leaf('Architecture'), leaf('Verification & Validation')]),
+          elem('Software Development', [leaf('Design'), leaf('Implementation'), leaf('Integration')]),
+          elem('Test & Evaluation', [leaf('Test Planning'), leaf('Execution & Reporting')]),
+          elem('Logistics & Sustainment', [leaf('Training'), leaf('Maintenance')]),
+        ],
+      }),
+    ],
+    groups: [],
+    comms: [],
+    legend: [],
+  }
+}
+
+/** Template 9 — teaming / workshare: the prime over its subcontractors, each
+ *  box carrying its role and workshare %. Color separates prime, large subs,
+ *  and small businesses; the legend explains the coding. */
+function teaming(): OrgChart {
+  const sub = (title: string, role: string, workshare: string, smallBiz: boolean): OrgNode =>
+    node({
+      title,
+      variant: smallBiz ? 'accent' : 'secondary',
+      width: 200,
+      details: [
+        { label: 'Role:', text: role },
+        { label: 'Workshare:', text: workshare },
+      ],
+    })
+
+  const prime = node({
+    title: 'Astrion (Prime)',
+    variant: 'primary',
+    name: 'Prime Contractor',
+    width: 240,
+    details: [
+      { label: 'Role:', text: 'Prime / Systems Integration' },
+      { label: 'Workshare:', text: '55%' },
+    ],
+    children: [
+      sub('Subcontractor A', 'Software & Data', '20%', false),
+      sub('Subcontractor B', 'Cyber & SIGINT', '12%', true),
+      sub('Subcontractor C', 'Logistics & Training', '8%', true),
+      sub('Subcontractor D', 'Specialty Engineering', '5%', true),
+    ],
+  })
+
+  return {
+    version: 1,
+    meta: { title: 'Teaming & Workshare', showTitle: true },
+    roots: [prime],
+    groups: [],
+    comms: [],
+    legend: [
+      { id: uid('l'), marker: 'boxPrimary', label: 'Prime' },
+      { id: uid('l'), marker: 'boxSecondary', label: 'Subcontractor (other-than-small)' },
+      { id: uid('l'), marker: 'boxAccent', label: 'Small business' },
+    ],
+  }
+}
+
 export const templates: { key: string; label: string; build: () => OrgChart }[] = [
   { key: 'simple-hierarchy', label: 'Simple Hierarchy (clean top-down)', build: simpleHierarchy },
   { key: 'functional-divisions', label: 'Functional Divisions (department stacks)', build: functionalDivisions },
   { key: 'program-office', label: 'Program Office (capability stacks)', build: programOffice },
   { key: 'director-level', label: 'Director Level (PWS & deliverables)', build: directorLevel },
+  { key: 'wbs', label: 'Work Breakdown Structure (numbered)', build: wbs },
+  { key: 'teaming', label: 'Teaming & Workshare (prime / subs)', build: teaming },
   { key: 'joint-venture', label: 'Joint Venture (board, PMO & TMs)', build: jointVenture },
   { key: 'mentor-protege', label: 'Mentor-Protégé JV (multi-site)', build: mentorProtege },
   { key: 'pmo-comms', label: 'PMO (lines of communication)', build: pmoComms },

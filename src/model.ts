@@ -160,6 +160,9 @@ export interface OrgChart {
     /** Draw the compliance overlay (per-box status badges + a gaps panel) on
      *  the chart itself. Off unless explicitly enabled. */
     showComplianceOverlay?: boolean
+    /** Prefix every visible box with a computed WBS outline number
+     *  (1, 1.1, 1.1.1 ...). A view concern only — stored titles stay clean. */
+    showWbsNumbers?: boolean
   }
   /** Independent trees/columns laid out left to right. */
   roots: OrgNode[]
@@ -456,6 +459,7 @@ export function normalizeChart(input: unknown): OrgChart {
       ...(dirOk ? { direction: dir } : {}),
       ...(layoutOk ? { layout } : {}),
       ...(c.meta?.showComplianceOverlay === true ? { showComplianceOverlay: true } : {}),
+      ...(c.meta?.showWbsNumbers === true ? { showWbsNumbers: true } : {}),
     },
     roots: c.roots as OrgNode[],
     groups: Array.isArray(c.groups) ? c.groups : [],

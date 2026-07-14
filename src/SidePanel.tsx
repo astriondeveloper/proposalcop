@@ -424,6 +424,16 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
         />
         Show compliance on chart (box badges + gaps panel)
       </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={!!chart.meta.showWbsNumbers}
+          onChange={(e) =>
+            onChange({ ...chart, meta: { ...chart.meta, showWbsNumbers: e.target.checked || undefined } })
+          }
+        />
+        Show WBS outline numbers
+      </label>
       <label>Layout
         <select
           value={chart.meta.layout ?? 'tree'}
