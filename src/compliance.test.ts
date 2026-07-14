@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildComplianceCsv,
+  buildTraceabilityCsv,
   computeCompliance,
   normalizeRef,
   parseRequirements,
@@ -207,6 +208,35 @@ describe('buildComplianceCsv', () => {
     const lines = csv.split('\r\n')
     expect(lines[0]).toBe('Kind,Reference,Requirement,Status,Owners')
     expect(lines[1]).toBe('"PWS","1.0","Lead","Covered","Program Manager; Quality"')
+  })
+})
+
+describe('buildTraceabilityCsv', () => {
+  it('emits one row per box reference, flagged against the register', () => {
+    const chart = chartOf(
+      [
+        node('pm', {
+          title: 'Program Manager',
+          name: 'Jane',
+          refs: [{ kind: 'PWS', ref: '1.0' }, { kind: 'PWS', ref: '9.9' }],
+        }),
+      ],
+      { requirements: [{ id: 'r1', kind: 'PWS', ref: '1.0' }] },
+    )
+    const lines = buildTraceabilityCsv(chart).split('\r\n')
+    expect(lines[0]).toBe('Box,Person,Kind,Reference,In register')
+    expect(lines[1]).toBe('"Program Manager","Jane","PWS","1.0","Yes"')
+    expect(lines[2]).toBe('"Program Manager","Jane","PWS","9.9","No"')
+  })
+
+  it('marks the register column n/a when no register exists', () => {
+    const chart = chartOf([node('a', { refs: [{ kind: 'PWS', ref: '1' }] })])
+    expect(buildTraceabilityCsv(chart).split('\r\n')[1]).toContain('"n/a"')
+  })
+
+  it('omits boxes without references', () => {
+    const chart = chartOf([node('a'), node('b', { refs: [{ kind: 'SOW', ref: '2' }] })])
+    expect(buildTraceabilityCsv(chart).split('\r\n')).toHaveLength(2) // header + one box
   })
 })
 

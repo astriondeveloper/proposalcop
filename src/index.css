@@ -1050,6 +1050,35 @@ body,
   font-style: italic;
 }
 
+/* Subtle "jump to first gap" button inside the coverage card. */
+.editor .cov-jump {
+  align-self: flex-start;
+  background: var(--surface);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+}
+
+.editor .cov-jump:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/* Transient highlight when a requirement row is jumped to. */
+.req.flash {
+  animation: req-flash 1.6s var(--ease);
+}
+
+@keyframes req-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    border-color: var(--border);
+  }
+  15% {
+    box-shadow: 0 0 0 3px var(--ring);
+    border-color: var(--accent);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0.01ms !important;

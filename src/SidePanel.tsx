@@ -32,6 +32,7 @@ import {
 } from './model'
 import {
   buildComplianceCsv,
+  buildTraceabilityCsv,
   computeCompliance,
   normalizeRef,
   parseRequirements,
@@ -652,6 +653,25 @@ function ComplianceEditor({ chart, onChange, onSelect }: Props) {
   const report = useMemo(() => computeCompliance(chart), [chart])
   const [bulk, setBulk] = useState('')
   const [bulkKind, setBulkKind] = useState<RefKind>('PWS')
+  // Transiently highlight a requirement row after "jump to first gap".
+  const [flashId, setFlashId] = useState<string | null>(null)
+
+  const anyRefs = allNodes(chart).some(({ node }) => (node.refs ?? []).length > 0)
+  const firstGapId = report.rows.find((r) => r.status === 'gap')?.requirement.id ?? null
+
+  useEffect(() => {
+    if (!flashId) return
+    const t = setTimeout(() => setFlashId(null), 1600)
+    return () => clearTimeout(t)
+  }, [flashId])
+
+  const jumpToFirstGap = () => {
+    if (!firstGapId) return
+    setFlashId(firstGapId)
+    const el = document.getElementById(`req-row-${firstGapId}`)
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el?.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' })
+  }
 
   const setRequirements = (reqs: Requirement[]) =>
     onChange({ ...chart, compliance: reqs.length ? { requirements: reqs } : undefined })
@@ -702,6 +722,11 @@ function ComplianceEditor({ chart, onChange, onSelect }: Props) {
               </span>
             ))}
           </div>
+          {firstGapId && (
+            <button className="sm cov-jump" onClick={jumpToFirstGap}>
+              ↓ Jump to first gap
+            </button>
+          )}
         </div>
       )}
 
@@ -727,7 +752,11 @@ function ComplianceEditor({ chart, onChange, onSelect }: Props) {
           <p className="hint">None yet. Add one at a time, or paste an outline below.</p>
         )}
         {report.rows.map((row, i) => (
-          <div key={row.requirement.id} className="req card">
+          <div
+            key={row.requirement.id}
+            id={`req-row-${row.requirement.id}`}
+            className={`req card${flashId === row.requirement.id ? ' flash' : ''}`}
+          >
             <div className="detail-row">
               <span className={`status-pill ${row.status}`}>
                 {row.status === 'covered' ? 'Covered' : 'Gap'}
@@ -799,12 +828,21 @@ function ComplianceEditor({ chart, onChange, onSelect }: Props) {
         </button>
       </fieldset>
 
-      <button
-        disabled={!requirements.length}
-        onClick={() => exportCsv(buildComplianceCsv(report), chart.meta.title)}
-      >
-        Export compliance CSV
-      </button>
+      <div className="btn-row">
+        <button
+          disabled={!requirements.length}
+          onClick={() => exportCsv(buildComplianceCsv(report), chart.meta.title)}
+        >
+          Export coverage CSV
+        </button>
+        <button
+          disabled={!anyRefs}
+          title="One row per box reference (who owns what)"
+          onClick={() => exportCsv(buildTraceabilityCsv(chart), chart.meta.title, 'by-box')}
+        >
+          Export by-box CSV
+        </button>
+      </div>
     </div>
   )
 }
