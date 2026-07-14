@@ -1,0 +1,909 @@
+:root {
+  /* ---- RAW BRAND (Astrion Standards Dec 2023 V.1) — frozen in both themes.
+         Consumed only by brand-locked chrome: .dot-* legend chips, swatch
+         chips, the toolbar sky-gradient border, brand mark. ---- */
+  --force: #442c81;
+  --sky: #29aae1;
+  --refraction: #1ed872;
+  --daylight: #4dd3f7;
+  --zenith: #9382f9;
+  --midnight: #222230;
+  --supernova: #ffaf2e;
+  --twilight: #fc5442;
+  --water: #307eef;
+
+  /* ---- SEMANTIC ROLES (LIGHT). Neutrals biased toward the Force hue so
+         greys read violet, not blue-grey. ---- */
+  --bg: #e9e7f1;
+  --bg-checker: #e1deec;
+  --panel: #f6f4fb;
+  --surface: #ffffff;
+  --surface-2: #f2f0f8;
+  --surface-hover: #ece9f5;
+
+  --text: #201e2e;
+  --muted: #5a5570;
+  --faint: #8b86a0;
+
+  --border: #e0dcec;
+  --border-strong: #c7c1da;
+
+  --accent: #442c81;
+  --accent-hover: #35216a;
+  --accent-ink: #ffffff;
+  --accent-soft: #ede9fa;
+  --accent-sky: #29aae1;
+  --info: #307eef;
+  --ring: rgba(68, 44, 129, 0.4);
+
+  --ok: #16a45a;
+  --warn: #c77d0a;
+  --danger: #d93d2a;
+  --danger-hover: #b8412a;
+  --danger-ink: #ffffff;
+
+  /* ---- TYPE (rem; fixed-chrome only — never inside the em-scaled panel) ---- */
+  --font-ui: Obvia, Verdana, Geneva, Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --fs-2xs: 0.6875rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-md: 0.875rem;
+  --fs-lg: 1rem;
+  --fs-xl: 1.25rem;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  /* ---- RADIUS ---- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-full: 999px;
+
+  /* ---- SPACE ---- */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 24px;
+
+  /* ---- ELEVATION (violet-tinted, theme-aware) ---- */
+  --shadow-1: 0 1px 2px rgba(34, 30, 60, 0.08);
+  --shadow-2: 0 4px 14px rgba(34, 30, 60, 0.12);
+  --shadow-3: 0 12px 34px rgba(34, 30, 60, 0.22);
+
+  /* ---- MOTION + FOCUS ---- */
+  --dur: 140ms;
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --focus-ring: 0 0 0 3px var(--ring);
+
+  color-scheme: light;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+
+:root[data-theme='dark'] {
+  --bg: #16151e;
+  --bg-checker: #1b1a25;
+  --panel: #1e1c2a;
+  --surface: #232130;
+  --surface-2: #2c2a3b;
+  --surface-hover: #343147;
+
+  --text: #eceaf4;
+  --muted: #a9a4bd;
+  --faint: #7a7690;
+
+  --border: #38344a;
+  --border-strong: #4a4560;
+
+  --accent: #9382f9;
+  --accent-hover: #a79afb;
+  --accent-ink: #17141f;
+  --accent-soft: rgba(147, 130, 249, 0.16);
+  --accent-sky: #4dd3f7;
+  --info: #5aa0ff;
+  --ring: rgba(147, 130, 249, 0.5);
+
+  --ok: #2ee08a;
+  --warn: #ffb74d;
+  --danger: #ff6b5a;
+  --danger-hover: #ff8375;
+  --danger-ink: #17141f;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 14px 38px rgba(0, 0, 0, 0.62);
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
+
+/* ------------------------------------------------------------ toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  background: var(--panel);
+  color: var(--text);
+  flex-wrap: wrap;
+  /* Astrion Sky-gradient bar (Refraction first, per the brand standards). */
+  border-bottom: 3px solid;
+  border-image: linear-gradient(90deg, var(--refraction), var(--daylight), var(--zenith)) 1;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  margin-right: var(--space-3);
+  white-space: nowrap;
+}
+
+.brand strong {
+  letter-spacing: 0.03em;
+}
+
+.brand-mark {
+  display: inline-flex;
+  line-height: 0;
+}
+
+.toolbar button,
+.toolbar select {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--space-3) var(--space-5);
+  font: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.toolbar button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.toolbar button:focus-visible,
+.toolbar select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.toolbar select option {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.template-select {
+  max-width: 240px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  margin: 0 var(--space-2);
+}
+
+.zoom-label {
+  font-size: var(--fs-xs);
+  min-width: 42px;
+  text-align: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  padding: 0;
+}
+
+.theme-toggle svg {
+  display: block;
+}
+
+/* --------------------------------------------------------------- main */
+.main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.canvas {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-7);
+  background:
+    linear-gradient(45deg, var(--bg-checker) 25%, transparent 25%, transparent 75%, var(--bg-checker) 75%),
+    linear-gradient(45deg, var(--bg-checker) 25%, transparent 25%, transparent 75%, var(--bg-checker) 75%);
+  background-color: var(--bg);
+  background-size: 24px 24px;
+  background-position: 0 0, 12px 12px;
+}
+
+.canvas:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.canvas.grab {
+  cursor: grab;
+}
+
+.canvas.grabbing {
+  cursor: grabbing;
+}
+
+/* Overview map, bottom-right of the canvas. Pure chrome, never exported. */
+.minimap {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 15;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  line-height: 0;
+}
+
+.minimap svg {
+  display: block;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.mm-node {
+  fill: var(--accent);
+  opacity: 0.32;
+}
+
+.mm-view {
+  fill: color-mix(in srgb, var(--accent-sky) 16%, transparent);
+  stroke: var(--accent-sky);
+  stroke-width: 1.5;
+}
+
+.svg-host {
+  display: inline-block;
+  box-shadow: var(--shadow-2);
+  line-height: 0;
+  /* Frozen paper edge — the deliverable stays white in both themes. */
+  background: #fff;
+}
+
+/* Shown when the chart has no visible boxes. */
+.empty-state {
+  max-width: 380px;
+  margin: 8vh auto 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--space-8, 28px) 30px;
+  text-align: center;
+  box-shadow: var(--shadow-2);
+}
+
+.empty-state h2 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--fs-xl);
+  color: var(--text);
+}
+
+.empty-state p {
+  margin: 0 0 var(--space-6);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.empty-state button {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 9px var(--space-6);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+
+.empty-state button:hover {
+  background: var(--accent-hover);
+}
+
+.empty-state button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* --------------------------------------------------- floating node toolbar */
+.node-toolbar {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+  transform: translateX(-50%);
+  animation: tb-in var(--dur) var(--ease);
+}
+
+@keyframes tb-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(2px) scale(0.98);
+  }
+}
+
+.node-toolbar .tb-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+
+.node-toolbar .tb-btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.node-toolbar .tb-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.node-toolbar .tb-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.node-toolbar .tb-btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger-hover);
+}
+
+.node-toolbar .tb-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 var(--space-1);
+}
+
+.node-toolbar .tb-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--border-strong);
+}
+
+/* Caret aimed at the node center via the inline --caret-x offset. */
+.node-toolbar::after {
+  content: '';
+  position: absolute;
+  left: var(--caret-x, 50%);
+  width: 10px;
+  height: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.node-toolbar[data-placement='above']::after {
+  bottom: -6px;
+  border-top: 0;
+  border-left: 0;
+}
+
+.node-toolbar[data-placement='below']::after {
+  top: -6px;
+  border-bottom: 0;
+  border-right: 0;
+}
+
+.tb-colorpop {
+  position: absolute;
+  z-index: 21;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: repeat(6, 22px);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+}
+
+.tb-colorpop .tb-sw {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  padding: 0;
+}
+
+.tb-colorpop .tb-sw:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tb-colorpop .tb-sw[aria-checked='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tb-colorpop .tb-sw-reset {
+  background: var(--surface-2);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  font-size: var(--fs-sm);
+  line-height: 1;
+}
+
+/* --------------------------------------------------------- side panel */
+.side-panel {
+  /* Width + base font size are driven inline by App/SidePanel state. */
+  width: 340px;
+  flex: 0 0 auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Draggable divider between the side panel and the canvas. */
+.resizer {
+  flex: 0 0 6px;
+  align-self: stretch;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+  z-index: 3;
+  touch-action: none;
+}
+
+.resizer::before {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  border-radius: 3px;
+  background: var(--border);
+  transition: background var(--dur) var(--ease);
+}
+
+.resizer:hover::before,
+.resizer:active::before {
+  background: var(--accent-sky);
+}
+
+.resizer:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 2;
+}
+
+.tabs button {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 1em;
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color var(--dur) var(--ease);
+}
+
+.tabs button:hover {
+  color: var(--text);
+}
+
+.tabs button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent-sky);
+}
+
+.tabs button:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.tree {
+  /* No inner scroll: the whole side panel scrolls as one, so the tree grows
+     to fit its content instead of trapping a second scrollbar at the top. */
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 0.95em;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+}
+
+.tree-row:hover {
+  background: var(--surface-2);
+}
+
+.tree-row.selected {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.tree-row:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus-ring);
+}
+
+.tree-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* Legend dots mirror the chart variant palette — keep raw brand colors. */
+.dot-primary { background: var(--force); }
+.dot-secondary { background: var(--sky); }
+.dot-tertiary { background: var(--daylight); }
+.dot-accent { background: var(--supernova); }
+.dot-hidden { background: none; border: 1px dashed var(--faint); }
+
+/* ------------------------------------------------------------- editor */
+.editor {
+  padding: 12px 14px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 0.95em;
+}
+
+.editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: var(--fw-semibold);
+  color: var(--muted);
+}
+
+.editor label.check {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  font-weight: var(--fw-medium);
+}
+
+.editor input,
+.editor select,
+.editor textarea {
+  font: inherit;
+  font-weight: 400;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  width: 100%;
+  background: var(--surface-2);
+  color: var(--text);
+  transition:
+    border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.editor input:hover,
+.editor select:hover,
+.editor textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.editor input:focus-visible,
+.editor select:focus-visible,
+.editor textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent-sky);
+  box-shadow: var(--focus-ring);
+}
+
+.editor input[type='checkbox'] {
+  width: auto;
+  accent-color: var(--accent);
+}
+
+.editor textarea.json {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  white-space: pre;
+}
+
+.editor button {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 0.88em;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: background var(--dur) var(--ease);
+}
+
+.editor button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.editor button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.editor button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.editor button.danger {
+  background: var(--danger);
+  color: var(--danger-ink);
+}
+
+.editor button.danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+
+.editor button.sm {
+  padding: 4px 8px;
+  flex-shrink: 0;
+}
+
+.btn-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: end;
+}
+
+.editor fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+}
+
+.editor fieldset legend {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.72em;
+  font-weight: var(--fw-bold);
+  color: var(--muted);
+  padding: 0 var(--space-3);
+}
+
+.detail-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.detail-row .detail-label {
+  width: 96px;
+  flex-shrink: 0;
+}
+
+.detail-row .arrow {
+  color: var(--info);
+  font-weight: 700;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.member-list {
+  max-height: 150px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.88em;
+  margin: 4px 0;
+  padding: 0 2px;
+}
+
+.editor .hint code {
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.88em;
+  margin: 0;
+}
+
+.swatches {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  text-align: center;
+}
+
+.swatch span {
+  width: 34px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+}
+
+.swatch small {
+  font-size: 0.72em;
+  color: var(--muted);
+  line-height: 1.25;
+}
+
+/* Clickable brand-color quick picks in the box editor. Higher specificity than
+   `.editor button` so the swatch keeps its own size/border. */
+.editor .swatch-btn {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  transition: transform var(--dur) var(--ease);
+}
+
+.editor .swatch-btn:hover {
+  transform: scale(1.08);
+}
+
+.editor .swatch-btn.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.editor .swatch-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Focus is conveyed via box-shadow, which forced-colors strips. Guarantee a
+   real, system-colored outline in Windows High Contrast / forced-colors. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

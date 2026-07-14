@@ -1,0 +1,660 @@
+<title>Proposal Common Operating Picture — Strategy Brief</title>
+<style>
+  :root{
+    color-scheme: light dark;
+    /* purple-biased neutrals (chosen, not defaulted) */
+    --bg:        #f4f3f8;
+    --bg-2:      #ecebf3;
+    --panel:     #ffffff;
+    --panel-2:   #f8f7fc;
+    --line:      #dedbec;
+    --line-2:    #cbc7de;
+    --ink:       #23222e;
+    --ink-2:     #4a4860;
+    --muted:     #6f6c86;
+    --faint:     #9c99b3;
+    /* Astrion brand */
+    --force:     #442C81;
+    --force-lift:#5a3ca8;
+    --sky:       #1f8fc4;
+    --sky-bright:#29AAE1;
+    --daylight:  #2ba6cf;
+    --zenith:    #6f5df0;
+    --green:     #12a85c;
+    --green-br:  #1ED872;
+    --gold:      #d98a00;
+    --gold-br:   #FFAF2E;
+    --red:       #e0392a;
+    --red-br:    #FC5442;
+    --ring:      rgba(68,44,129,.35);
+    --shadow:    0 1px 2px rgba(34,34,48,.06), 0 8px 24px rgba(34,34,48,.06);
+
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:        #14141c;
+      --bg-2:      #101017;
+      --panel:     #1c1c27;
+      --panel-2:   #20202c;
+      --line:      #2c2c3b;
+      --line-2:    #3a3a4e;
+      --ink:       #e7e6f0;
+      --ink-2:     #c3c1d6;
+      --muted:     #8b89a3;
+      --faint:     #6b697f;
+      --force:     #9382F9;
+      --force-lift:#a99cff;
+      --sky:       #29AAE1;
+      --sky-bright:#4DD3F7;
+      --daylight:  #4DD3F7;
+      --zenith:    #9382F9;
+      --green:     #1ED872;
+      --green-br:  #4ef29a;
+      --gold:      #FFAF2E;
+      --gold-br:   #ffc264;
+      --red:       #FC5442;
+      --red-br:    #ff7a6b;
+      --ring:      rgba(147,130,249,.4);
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{
+    color-scheme: light;
+    --bg:#f4f3f8; --bg-2:#ecebf3; --panel:#ffffff; --panel-2:#f8f7fc;
+    --line:#dedbec; --line-2:#cbc7de; --ink:#23222e; --ink-2:#4a4860;
+    --muted:#6f6c86; --faint:#9c99b3;
+    --force:#442C81; --force-lift:#5a3ca8; --sky:#1f8fc4; --sky-bright:#29AAE1;
+    --daylight:#2ba6cf; --zenith:#6f5df0; --green:#12a85c; --green-br:#1ED872;
+    --gold:#d98a00; --gold-br:#FFAF2E; --red:#e0392a; --red-br:#FC5442;
+    --ring:rgba(68,44,129,.35);
+    --shadow:0 1px 2px rgba(34,34,48,.06), 0 8px 24px rgba(34,34,48,.06);
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --bg:#14141c; --bg-2:#101017; --panel:#1c1c27; --panel-2:#20202c;
+    --line:#2c2c3b; --line-2:#3a3a4e; --ink:#e7e6f0; --ink-2:#c3c1d6;
+    --muted:#8b89a3; --faint:#6b697f;
+    --force:#9382F9; --force-lift:#a99cff; --sky:#29AAE1; --sky-bright:#4DD3F7;
+    --daylight:#4DD3F7; --zenith:#9382F9; --green:#1ED872; --green-br:#4ef29a;
+    --gold:#FFAF2E; --gold-br:#ffc264; --red:#FC5442; --red-br:#ff7a6b;
+    --ring:rgba(147,130,249,.4);
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.35);
+  }
+
+  *{ box-sizing:border-box; }
+  body{ margin:0; }
+  .page{
+    background:
+      radial-gradient(1200px 520px at 82% -8%, color-mix(in srgb, var(--zenith) 14%, transparent), transparent 60%),
+      radial-gradient(900px 480px at 5% 4%, color-mix(in srgb, var(--sky) 10%, transparent), transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+    padding-bottom:64px;
+  }
+  .wrap{ max-width:1120px; margin:0 auto; padding:0 24px; }
+
+  /* ---------- operational label voice ---------- */
+  .mono{ font-family:var(--mono); }
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.18em;
+    text-transform:uppercase; color:var(--muted); font-weight:600;
+  }
+  .accent{ color:var(--force); }
+
+  /* ---------- classification banner ---------- */
+  .classbar{
+    font-family:var(--mono); font-size:11px; letter-spacing:.28em; font-weight:700;
+    text-transform:uppercase; text-align:center; color:#0d0d14;
+    background:linear-gradient(90deg,var(--green-br),var(--daylight),var(--zenith));
+    padding:6px 12px;
+  }
+
+  /* ---------- masthead ---------- */
+  .mast{
+    border-bottom:1px solid var(--line);
+    background:color-mix(in srgb, var(--panel) 70%, transparent);
+    backdrop-filter:blur(6px);
+  }
+  .mast-row{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:20px; padding:16px 24px; max-width:1120px; margin:0 auto; flex-wrap:wrap;
+  }
+  .brandmark{ display:flex; align-items:center; gap:14px; }
+  .diamond{
+    width:26px; height:26px; flex:none; transform:rotate(45deg);
+    background:linear-gradient(135deg,var(--force-lift),var(--sky-bright));
+    border-radius:5px; box-shadow:0 0 0 1px color-mix(in srgb,var(--force) 40%,transparent);
+  }
+  .brandmark h1{
+    margin:0; font-size:15px; letter-spacing:.02em; line-height:1.15; color:var(--ink);
+  }
+  .brandmark h1 span{ color:var(--muted); font-weight:500; }
+  .telemetry{ display:flex; gap:22px; align-items:center; flex-wrap:wrap; }
+  .tele{ display:flex; flex-direction:column; align-items:flex-end; }
+  .tele b{ font-family:var(--mono); font-size:15px; color:var(--ink); font-variant-numeric:tabular-nums; }
+  .tele small{ font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--faint); }
+  .live{
+    display:inline-flex; align-items:center; gap:7px; font-family:var(--mono);
+    font-size:10.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--green);
+    border:1px solid color-mix(in srgb,var(--green) 45%,transparent);
+    border-radius:999px; padding:4px 10px;
+  }
+  .dot{ width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 0 0 var(--green); animation:pulse 2.4s infinite; }
+  @keyframes pulse{ 0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--green) 60%,transparent);} 70%{box-shadow:0 0 0 7px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }
+  @media (prefers-reduced-motion: reduce){ .dot{ animation:none; } }
+
+  /* ---------- hero ---------- */
+  .hero{ padding:56px 0 30px; }
+  .hero .eyebrow{ margin-bottom:16px; }
+  .hero h2{
+    font-size:clamp(30px,4.6vw,52px); line-height:1.04; letter-spacing:-.02em;
+    margin:0 0 20px; font-weight:800; max-width:20ch; text-wrap:balance; color:var(--ink);
+  }
+  .hero h2 em{ font-style:normal; color:var(--force); }
+  .lede{ font-size:clamp(16px,1.6vw,19px); color:var(--ink-2); max-width:66ch; margin:0; }
+  .lede strong{ color:var(--ink); font-weight:650; }
+
+  /* ---------- section frame ---------- */
+  section{ padding:34px 0; }
+  .sechead{ display:flex; align-items:baseline; gap:14px; margin-bottom:22px; flex-wrap:wrap; }
+  .sechead .num{ font-family:var(--mono); font-size:12px; color:var(--force); font-weight:700; letter-spacing:.1em; }
+  .sechead h3{ font-size:clamp(21px,2.4vw,28px); margin:0; letter-spacing:-.01em; font-weight:750; color:var(--ink); }
+  .sechead p{ margin:0; color:var(--muted); font-size:14px; flex:1 1 260px; }
+
+  /* ---------- panels / cards ---------- */
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow); position:relative;
+  }
+  .grid{ display:grid; gap:14px; }
+  .g2{ grid-template-columns:repeat(2,1fr); }
+  .g3{ grid-template-columns:repeat(3,1fr); }
+  .g4{ grid-template-columns:repeat(4,1fr); }
+  @media (max-width:860px){ .g3,.g4{ grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:560px){ .g2,.g3,.g4{ grid-template-columns:1fr;} }
+
+  /* ---------- current-state readout ---------- */
+  .readout{ padding:20px; }
+  .readout .row{ display:flex; gap:22px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+  .stat b{ font-family:var(--mono); font-size:26px; font-variant-numeric:tabular-nums; color:var(--ink); display:block; line-height:1; }
+  .stat small{ font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
+  .caps{ display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+  .cap{
+    font-family:var(--mono); font-size:11px; letter-spacing:.04em; color:var(--ink-2);
+    border:1px solid var(--line-2); border-radius:7px; padding:5px 9px; background:var(--panel-2);
+    display:inline-flex; align-items:center; gap:7px;
+  }
+  .cap::before{ content:""; width:6px; height:6px; border-radius:50%; background:var(--green); flex:none; }
+
+  /* ---------- three-layer reframe ---------- */
+  .stack{ display:grid; gap:12px; }
+  .layer{ padding:18px 20px; border-radius:12px; border:1px solid var(--line); position:relative; overflow:hidden; }
+  .layer .tag{ font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; font-weight:700; }
+  .layer h4{ margin:6px 0 5px; font-size:17px; color:var(--ink); }
+  .layer p{ margin:0; color:var(--ink-2); font-size:13.5px; max-width:80ch; }
+  .layer.l1{ background:color-mix(in srgb,var(--sky) 9%,var(--panel)); }
+  .layer.l1 .tag{ color:var(--sky); }
+  .layer.l2{ background:color-mix(in srgb,var(--force) 11%,var(--panel)); }
+  .layer.l2 .tag{ color:var(--force); }
+  .layer.l3{ background:color-mix(in srgb,var(--gold) 12%,var(--panel)); }
+  .layer.l3 .tag{ color:var(--gold); }
+  .layer .edge{ position:absolute; inset:0 auto 0 0; width:3px; }
+  .l1 .edge{ background:var(--sky); } .l2 .edge{ background:var(--force); } .l3 .edge{ background:var(--gold); }
+
+  /* ---------- use-case catalog ---------- */
+  .uc{ padding:16px 16px 18px; display:flex; flex-direction:column; gap:8px; transition:border-color .15s, transform .15s; }
+  .uc:hover{ border-color:var(--line-2); transform:translateY(-1px); }
+  .uc .uc-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .uc .kicker{ font-family:var(--mono); font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); }
+  .uc h4{ margin:0; font-size:15.5px; color:var(--ink); letter-spacing:-.005em; }
+  .uc p{ margin:0; font-size:13px; color:var(--ink-2); }
+  .pill{ font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; font-weight:700; padding:3px 7px; border-radius:6px; white-space:nowrap; }
+  .pill.new{ color:var(--gold); background:color-mix(in srgb,var(--gold) 16%,transparent); }
+  .pill.data{ color:var(--sky); background:color-mix(in srgb,var(--sky) 16%,transparent); }
+  .pill.ext{ color:var(--force); background:color-mix(in srgb,var(--force) 16%,transparent); }
+  .pill.platform{ color:var(--zenith); background:color-mix(in srgb,var(--zenith) 16%,transparent); }
+
+  /* ---------- capability tracks ---------- */
+  .track{ padding:20px; display:grid; grid-template-columns:1fr; gap:14px; }
+  .track-head{ display:flex; align-items:flex-start; gap:14px; }
+  .track-no{
+    font-family:var(--mono); font-weight:800; font-size:13px; color:#fff;
+    background:var(--force); border-radius:8px; width:34px; height:34px; flex:none;
+    display:grid; place-items:center;
+  }
+  .track h4{ margin:0 0 3px; font-size:18px; color:var(--ink); }
+  .track .sub{ margin:0; color:var(--muted); font-size:13px; }
+  .split{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:640px){ .split{ grid-template-columns:1fr; } }
+  .col small{ font-family:var(--mono); font-size:10px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); display:block; margin-bottom:7px; }
+  .col ul{ margin:0; padding-left:0; list-style:none; display:grid; gap:6px; }
+  .col li{ font-size:13.5px; color:var(--ink-2); padding-left:18px; position:relative; }
+  .col.adds li::before{ content:"+"; position:absolute; left:2px; color:var(--sky); font-family:var(--mono); font-weight:700; }
+  .col.unlocks li::before{ content:"→"; position:absolute; left:0; color:var(--green); font-family:var(--mono); font-weight:700; }
+  .chips{ display:flex; gap:8px; flex-wrap:wrap; }
+  .chip{ font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; padding:4px 9px; border-radius:999px; border:1px solid var(--line-2); color:var(--ink-2); }
+  .chip b{ color:var(--ink); }
+
+  /* ---------- roadmap ---------- */
+  .road{ display:grid; gap:0; }
+  .phase{ display:grid; grid-template-columns:150px 1fr; gap:18px; padding:16px 0; border-top:1px solid var(--line); }
+  .phase:first-child{ border-top:none; }
+  @media (max-width:640px){ .phase{ grid-template-columns:1fr; gap:6px; } }
+  .phase .when{ font-family:var(--mono); font-size:12px; color:var(--muted); letter-spacing:.04em; }
+  .phase .status{ display:inline-block; margin-top:6px; font-family:var(--mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:700; padding:2px 7px; border-radius:5px; }
+  .status.done{ color:var(--green); background:color-mix(in srgb,var(--green) 15%,transparent); }
+  .status.next{ color:var(--gold); background:color-mix(in srgb,var(--gold) 16%,transparent); }
+  .status.later{ color:var(--muted); background:color-mix(in srgb,var(--muted) 14%,transparent); }
+  .phase h4{ margin:0 0 4px; font-size:16px; color:var(--ink); }
+  .phase p{ margin:0; color:var(--ink-2); font-size:13.5px; }
+
+  /* ---------- impact / recommendation ---------- */
+  .impact{ padding:18px 20px; }
+  .impact h4{ margin:0 0 4px; font-size:15px; color:var(--ink); display:flex; align-items:center; gap:8px; }
+  .impact h4 .k{ font-family:var(--mono); color:var(--green); font-size:18px; }
+  .impact p{ margin:0; font-size:13px; color:var(--ink-2); }
+
+  .reco{ padding:26px; background:
+      linear-gradient(180deg,color-mix(in srgb,var(--force) 8%,var(--panel)),var(--panel));
+      border:1px solid color-mix(in srgb,var(--force) 30%,var(--line)); }
+  .reco .eyebrow{ color:var(--force); }
+  .reco h3{ font-size:clamp(20px,2.4vw,26px); margin:10px 0 12px; color:var(--ink); letter-spacing:-.01em; }
+  .reco p{ margin:0 0 16px; color:var(--ink-2); max-width:74ch; }
+  .reco ol{ margin:0; padding-left:20px; display:grid; gap:9px; }
+  .reco li{ color:var(--ink-2); font-size:14px; }
+  .reco li b{ color:var(--ink); }
+
+  .note{ border:1px solid var(--line); background:var(--panel-2); border-radius:10px; padding:14px 16px; }
+  .note p{ margin:0; font-size:12.5px; color:var(--muted); }
+
+  footer{ margin-top:40px; border-top:1px solid var(--line); }
+  footer .wrap{ padding:22px 24px; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  footer .eyebrow{ color:var(--faint); }
+  footer p{ margin:4px 0 0; font-size:12px; color:var(--muted); max-width:60ch; }
+
+  .cornered::before,.cornered::after{ content:""; position:absolute; width:10px; height:10px; border:1px solid var(--line-2); }
+  .cornered::before{ top:8px; left:8px; border-right:none; border-bottom:none; }
+  .cornered::after{ bottom:8px; right:8px; border-left:none; border-top:none; }
+</style>
+
+<div class="page">
+  <div class="classbar">Internal // Astrion Proposal &amp; Capture // Strategy Brief — Not a Committed Roadmap</div>
+
+  <header class="mast">
+    <div class="mast-row">
+      <div class="brandmark">
+        <div class="diamond" aria-hidden="true"></div>
+        <h1>PROPOSAL COMMON OPERATING PICTURE<br><span>Org Chart Builder → enterprise proposal-graphics &amp; capture platform</span></h1>
+      </div>
+      <div class="telemetry">
+        <span class="live"><span class="dot" aria-hidden="true"></span>In service</span>
+        <div class="tele"><b>0–3</b><small>Phases shipped</small></div>
+        <div class="tele"><b>7</b><small>Proposal templates</small></div>
+        <div class="tele"><b>0</b><small>External deps</small></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <section class="hero">
+      <div class="eyebrow">Where this goes next</div>
+      <h2>You built an org-chart tool. You actually built a <em>governed graphics engine</em>.</h2>
+      <p class="lede">The chart is one artifact. Underneath it is a deterministic, brand-locked, export-clean diagram engine with a structured data model that already carries <strong>roles, PWS references, interfaces, deliverables, and teaming relationships</strong>. That data is the whole opportunity. Point the same engine at the rest of the proposal graphics package, then let the shared data drive compliance and capture intelligence — and a single-purpose utility becomes the enterprise system of record for how a pursuit is staffed, structured, and traced to the RFP.</p>
+    </section>
+
+    <section aria-label="Current state">
+      <div class="sechead">
+        <span class="num">00</span>
+        <h3>What is already in service</h3>
+        <p>The foundation is unusually strong for a v1. This is not a prototype — it is a hardened tool looking for a larger mission.</p>
+      </div>
+      <div class="panel readout cornered">
+        <div class="row">
+          <div class="stat"><b>5</b><small>Layout engines</small></div>
+          <div class="stat"><b>4</b><small>Export formats</small></div>
+          <div class="stat"><b>100%</b><small>Brand-locked</small></div>
+          <div class="stat"><b>0</b><small>Data leaves device</small></div>
+          <div class="stat"><b>Det.</b><small>Same input → same output</small></div>
+        </div>
+        <div class="caps">
+          <span class="cap">Tree / radial / layered / matrix / swimlane</span>
+          <span class="cap">First-class typed edges</span>
+          <span class="cap">Drag-to-position overrides</span>
+          <span class="cap">Group zones &amp; comms lines</span>
+          <span class="cap">SVG · PNG · PDF · PPTX</span>
+          <span class="cap">PWS / Deliverables / Interface rows</span>
+          <span class="cap">Keyboard + ARIA a11y</span>
+          <span class="cap">Large-graph performance</span>
+          <span class="cap">Autosave + JSON round-trip</span>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="The reframe">
+      <div class="sechead">
+        <span class="num">01</span>
+        <h3>The reframe: three layers, one dataset</h3>
+        <p>Each layer reuses the one below. The engine you have is Layer 1. The value the enterprise is missing lives in Layers 2 and 3.</p>
+      </div>
+      <div class="stack">
+        <div class="layer l1"><span class="edge" aria-hidden="true"></span>
+          <span class="tag">Layer 1 · shipped</span>
+          <h4>Governed diagram engine</h4>
+          <p>Deterministic layout, brand enforcement, clean export. Renders org charts today; it can render any node-and-edge graphic without giving up brand control or export fidelity.</p>
+        </div>
+        <div class="layer l2"><span class="edge" aria-hidden="true"></span>
+          <span class="tag">Layer 2 · the multiplier</span>
+          <h4>The full proposal graphics package + compliance traceability</h4>
+          <p>WBS, transition schedule, teaming diagram, process swimlanes, quad chart, architecture views — all from the same engine. Every element ties to a PWS/SOW/Section-L reference, so one dataset produces the chart, the staffing table, and the compliance matrix, and they never disagree.</p>
+        </div>
+        <div class="layer l3"><span class="edge" aria-hidden="true"></span>
+          <span class="tag">Layer 3 · over the top</span>
+          <h4>Capture common operating picture + AI assist</h4>
+          <p>A live picture of a pursuit: PWS coverage, staffing gaps, key-personnel status, color-team review gates, teaming workshare. AI drafts structures from the RFP and flags gaps — the operator (capture lead) keeps the decision. This is the bridge to the command-center concepts your SVP is already building.</p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Use case catalog">
+      <div class="sechead">
+        <span class="num">02</span>
+        <h3>Use cases not yet explored</h3>
+        <p>Tagged by how far the current build already reaches. <span class="pill data" style="vertical-align:middle">Data-ready</span> means the model already holds most of what is needed.</p>
+      </div>
+      <div class="grid g3">
+
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Graphic type</span><span class="pill new">New view</span></div>
+          <h4>Work Breakdown Structure</h4>
+          <p>Numbered WBS decomposition tied to the org chart and to PWS paragraphs — reuses the tidy-tree engine directly.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Graphic type</span><span class="pill new">New view</span></div>
+          <h4>Transition / phase-in schedule</h4>
+          <p>30/60/90-day timeline with milestones and risk-retirement gates — the graphic every management volume needs.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Graphic type</span><span class="pill data">Data-ready</span></div>
+          <h4>Teaming / workshare diagram</h4>
+          <p>Prime–sub relationships, workshare %, small-business / socioeconomic status, agreement type. Comms edges already exist.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Graphic type</span><span class="pill data">Data-ready</span></div>
+          <h4>Process &amp; swimlane flows</h4>
+          <p>Promote the existing swimlane layout to a first-class BPMN-lite for management-approach and CONOPS graphics.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Graphic type</span><span class="pill data">Data-ready</span></div>
+          <h4>RACI / responsibility matrix</h4>
+          <p>Roles × PWS tasks on the matrix layout, generated from the same role data that drives the org chart.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Graphic type</span><span class="pill new">New view</span></div>
+          <h4>Quad chart &amp; one-pager</h4>
+          <p>The four-panel opportunity summary for gate reviews and capture briefs, brand-locked and repeatable.</p>
+        </div>
+
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Compliance</span><span class="pill data">Data-ready</span></div>
+          <h4>Auto compliance matrix</h4>
+          <p>The PWS/Deliverables/Interface rows already on each box roll up into a Section-L/M traceability matrix — no re-keying.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Compliance</span><span class="pill data">Data-ready</span></div>
+          <h4>Coverage &amp; gap detection</h4>
+          <p>Flag PWS paragraphs with no owner, key personnel with no labor category, deliverables with no responsible box.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Data</span><span class="pill data">Data-ready</span></div>
+          <h4>Import from staffing / BOE</h4>
+          <p>Ingest a staffing plan or basis-of-estimate spreadsheet (CSV/XLSX) and generate the chart — kill the manual redraw.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Data</span><span class="pill new">New view</span></div>
+          <h4>Table round-trip</h4>
+          <p>Export the org data back out as the staffing table for the management/cost volume — one source, two artifacts.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Reuse</span><span class="pill ext">Enterprise</span></div>
+          <h4>Corporate template governance</h4>
+          <p>Locked, approved starting points and reusable partial structures (standard PMO, SHE&amp;Q branch, corporate-resources column) with versioning.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Reuse</span><span class="pill ext">Enterprise</span></div>
+          <h4>Key-personnel library</h4>
+          <p>Store a person once — name, labor category, clearance, availability — and reuse across every pursuit.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Review</span><span class="pill new">New view</span></div>
+          <h4>Color-team review mode</h4>
+          <p>Pink / Red / Gold annotations on the graphic, comment resolution, and a redline diff between two versions.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Output</span><span class="pill new">New view</span></div>
+          <h4>Deliverable-grade output</h4>
+          <p>Action captions, figure numbering, exact slide/page-fit presets, tagged/508-accessible PDF, CUI banners &amp; watermarks.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Intelligence</span><span class="pill platform">Platform</span></div>
+          <h4>Capture COP dashboard</h4>
+          <p>One picture across a pursuit: coverage, staffing, review gates, workshare — the operational board, applied to a proposal.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Intelligence</span><span class="pill platform">Platform</span></div>
+          <h4>AI draft &amp; gap assist</h4>
+          <p>Draft an org structure from a pasted PWS, suggest labor-category mappings, surface compliance gaps — human keeps the pen.</p>
+        </div>
+        <div class="panel uc">
+          <div class="uc-top"><span class="kicker">Platform</span><span class="pill platform">Platform</span></div>
+          <h4>Workspaces, SSO &amp; sharing</h4>
+          <p>Per-pursuit workspaces, Entra ID / CAC SSO, roles, audit trail — with a self-hosted / GovCloud path for CUI.</p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Capability tracks">
+      <div class="sechead">
+        <span class="num">03</span>
+        <h3>Capability expansion tracks</h3>
+        <p>Each track lists what it adds and what it unlocks. Sequenced roughly by value-per-effort, not by size.</p>
+      </div>
+      <div class="grid" style="gap:14px;">
+
+        <div class="panel track cornered">
+          <div class="track-head">
+            <div class="track-no">A</div>
+            <div><h4>Compliance &amp; traceability layer</h4><p class="sub">Turn the PWS rows you already collect into a live compliance system.</p></div>
+          </div>
+          <div class="split">
+            <div class="col adds"><small>Adds</small><ul>
+              <li>Reference fields on nodes/edges (PWS, SOW, Section L/M, deliverable ID)</li>
+              <li>Auto-generated compliance / cross-reference matrix</li>
+              <li>Gap detection: unowned PWS items, unmapped personnel</li>
+            </ul></div>
+            <div class="col unlocks"><small>Unlocks</small><ul>
+              <li>Charts stop drifting from the compliance matrix</li>
+              <li>Reviewers catch coverage holes before Red team, not after</li>
+              <li>The dataset becomes provably RFP-traceable</li>
+            </ul></div>
+          </div>
+          <div class="chips"><span class="chip">Effort <b>Low</b></span><span class="chip">Impact <b>High</b></span><span class="chip">Uses <b>existing model</b></span></div>
+        </div>
+
+        <div class="panel track cornered">
+          <div class="track-head">
+            <div class="track-no">B</div>
+            <div><h4>Proposal graphic-type expansion</h4><p class="sub">Same engine, five more graphics the evaluator expects to see.</p></div>
+          </div>
+          <div class="split">
+            <div class="col adds"><small>Adds</small><ul>
+              <li>WBS, transition schedule, teaming diagram, quad chart</li>
+              <li>Swimlane process flows promoted to first-class</li>
+              <li>Per-type presets and legends, still brand-governed</li>
+            </ul></div>
+            <div class="col unlocks"><small>Unlocks</small><ul>
+              <li>One tool covers most management-volume graphics</li>
+              <li>Consistent look across every figure in a volume</li>
+              <li>Adoption beyond the one person who draws org charts</li>
+            </ul></div>
+          </div>
+          <div class="chips"><span class="chip">Effort <b>Med</b></span><span class="chip">Impact <b>High</b></span><span class="chip">Reuses <b>layout engine</b></span></div>
+        </div>
+
+        <div class="panel track cornered">
+          <div class="track-head">
+            <div class="track-no">C</div>
+            <div><h4>Reuse library &amp; governance</h4><p class="sub">The literal answer to "repeatable for the enterprise."</p></div>
+          </div>
+          <div class="split">
+            <div class="col adds"><small>Adds</small><ul>
+              <li>Corporate template gallery with "approved for use" status</li>
+              <li>Reusable snippets (partial structures) and key-personnel cards</li>
+              <li>Template versioning and publish permissions</li>
+            </ul></div>
+            <div class="col unlocks"><small>Unlocks</small><ul>
+              <li>Every capture team starts from approved, on-brand structures</li>
+              <li>Institutional knowledge stops living in one person's files</li>
+              <li>Faster first draft, fewer brand/format review cycles</li>
+            </ul></div>
+          </div>
+          <div class="chips"><span class="chip">Effort <b>Med</b></span><span class="chip">Impact <b>High</b></span><span class="chip">Needs <b>light backend</b></span></div>
+        </div>
+
+        <div class="panel track cornered">
+          <div class="track-head">
+            <div class="track-no">D</div>
+            <div><h4>Data in, tables out</h4><p class="sub">Stop re-keying the same staffing data into three documents.</p></div>
+          </div>
+          <div class="split">
+            <div class="col adds"><small>Adds</small><ul>
+              <li>CSV/XLSX import → chart generation</li>
+              <li>Table export of roles/staffing for other volumes</li>
+              <li>Field mapping wizard, validation on import</li>
+            </ul></div>
+            <div class="col unlocks"><small>Unlocks</small><ul>
+              <li>Chart and staffing/cost volume stay in sync automatically</li>
+              <li>Large orgs become minutes of import, not hours of drawing</li>
+              <li>A clean seam for future integrations (BOE, HR systems)</li>
+            </ul></div>
+          </div>
+          <div class="chips"><span class="chip">Effort <b>Med</b></span><span class="chip">Impact <b>Med-High</b></span><span class="chip">Client-side <b>OK</b></span></div>
+        </div>
+
+        <div class="panel track cornered">
+          <div class="track-head">
+            <div class="track-no">E</div>
+            <div><h4>Capture COP + AI assist</h4><p class="sub">The "over the top" layer — and the bridge to your SVP's tools.</p></div>
+          </div>
+          <div class="split">
+            <div class="col adds"><small>Adds</small><ul>
+              <li>Pursuit dashboard: coverage, staffing, review gates, workshare</li>
+              <li>AI draft-from-PWS and labor-category suggestions</li>
+              <li>Color-team review mode with redline diff</li>
+            </ul></div>
+            <div class="col unlocks"><small>Unlocks</small><ul>
+              <li>Capture leadership sees pursuit health at a glance</li>
+              <li>Human-on-the-loop AI that accelerates without deciding</li>
+              <li>A story that matches the enterprise AI direction</li>
+            </ul></div>
+          </div>
+          <div class="chips"><span class="chip">Effort <b>High</b></span><span class="chip">Impact <b>High</b></span><span class="chip">Needs <b>services + AI</b></span></div>
+        </div>
+
+        <div class="panel track cornered">
+          <div class="track-head">
+            <div class="track-no">F</div>
+            <div><h4>Enterprise platform &amp; security posture</h4><p class="sub">The largest lift — gated on CUI, not on features.</p></div>
+          </div>
+          <div class="split">
+            <div class="col adds"><small>Adds</small><ul>
+              <li>Cloud workspaces, shareable links, real-time multi-user</li>
+              <li>SSO (Entra ID / CAC-PIV), roles, audit trail</li>
+              <li>Self-hosted / GovCloud deployment for CUI data</li>
+            </ul></div>
+            <div class="col unlocks"><small>Unlocks</small><ul>
+              <li>True enterprise-wide, concurrent use</li>
+              <li>Defensible handling of controlled information</li>
+              <li>Central visibility across the whole pipeline</li>
+            </ul></div>
+          </div>
+          <div class="chips"><span class="chip">Effort <b>High</b></span><span class="chip">Impact <b>High</b></span><span class="chip">Gate <b>CUI / security review</b></span></div>
+        </div>
+
+      </div>
+    </section>
+
+    <section aria-label="Roadmap">
+      <div class="sechead">
+        <span class="num">04</span>
+        <h3>Sequenced roadmap</h3>
+        <p>Extends the phase language already in your ROADMAP. Ship value in the order that de-risks the enterprise story.</p>
+      </div>
+      <div class="panel" style="padding:8px 22px;">
+        <div class="road">
+          <div class="phase"><div class="when">Phases 0–3<span class="status done">Shipped</span></div><div><h4>Hardened single-user tool</h4><p>Canvas, free-form diagramming, five layouts, PDF/PPTX export, accessibility, large-graph performance. Done.</p></div></div>
+          <div class="phase"><div class="when">Next<span class="status next">Recommended first</span></div><div><h4>Track A — compliance &amp; traceability</h4><p>Lowest effort, highest differentiation, uses data already in the model. Proves the "one dataset, many artifacts" thesis before any backend spend.</p></div></div>
+          <div class="phase"><div class="when">Following<span class="status next">Fast follow</span></div><div><h4>Tracks B + D — more graphics, data import</h4><p>Widen adoption (more graphic types) and kill manual re-entry (spreadsheet import / table export). Both stay client-side.</p></div></div>
+          <div class="phase"><div class="when">Then<span class="status later">Needs backend</span></div><div><h4>Track C — reuse library &amp; governance</h4><p>First light backend: shared, versioned, approved templates and a key-personnel library. Delivers the enterprise-repeatability promise.</p></div></div>
+          <div class="phase"><div class="when">Later<span class="status later">Bigger bet</span></div><div><h4>Track E — capture COP &amp; AI assist</h4><p>Dashboard, human-on-the-loop AI drafting, color-team review. The showcase layer once the data foundation is in place.</p></div></div>
+          <div class="phase"><div class="when">When ready<span class="status later">Security-gated</span></div><div><h4>Track F — enterprise platform</h4><p>Cloud, SSO, multi-user, CUI-compliant deployment. Sequence this against the security review, not the feature backlog.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Impact">
+      <div class="sechead">
+        <span class="num">05</span>
+        <h3>What increasing functionality actually does</h3>
+        <p>Every track ladders up to one of five enterprise outcomes.</p>
+      </div>
+      <div class="grid g3">
+        <div class="panel impact"><h4><span class="k">1</span>Single source of truth</h4><p>People, structure, and PWS mapping live in one dataset; one edit propagates to every artifact instead of being re-keyed across volumes.</p></div>
+        <div class="panel impact"><h4><span class="k">2</span>Higher win probability</h4><p>Compliance gaps surface before Red team, graphics read consistently, and evaluators find what they are scoring faster.</p></div>
+        <div class="panel impact"><h4><span class="k">3</span>Enterprise repeatability</h4><p>Governed templates and a reuse library mean every capture team starts from approved, on-brand structures — not a blank canvas.</p></div>
+        <div class="panel impact"><h4><span class="k">4</span>Lower production cost</h4><p>No manual redrawing, no re-keying staffing data, fewer brand/format review cycles per pursuit.</p></div>
+        <div class="panel impact"><h4><span class="k">5</span>A durable data asset</h4><p>Structured pursuit data across the pipeline becomes reusable capture intelligence and a basis for lessons learned.</p></div>
+        <div class="panel impact"><h4><span class="k">6</span>An AI story that fits</h4><p>Human-on-the-loop assistance on a governed dataset — the same posture as the command-center tools, applied to capture.</p></div>
+      </div>
+    </section>
+
+    <section aria-label="Recommendation">
+      <div class="panel reco cornered">
+        <div class="eyebrow">Recommendation</div>
+        <h3>Start with the layer that needs no backend and proves the thesis.</h3>
+        <p>Build <b>Track A (compliance &amp; traceability)</b> first. It is the lowest-effort, most differentiated move, it uses the PWS data the model already collects, and it demonstrates the core idea — one dataset, many consistent artifacts — before anyone commits to services, security review, or AI. It is also the most credible thing to demo to capture leadership and the SVP.</p>
+        <ol>
+          <li><b>Prove it (Track A):</b> reference fields → compliance matrix + gap flags on the current single-user tool.</li>
+          <li><b>Widen it (Tracks B + D):</b> more graphic types and spreadsheet import — grow adoption while staying client-side.</li>
+          <li><b>Share it (Track C):</b> a light backend for governed, versioned, reusable templates and personnel.</li>
+          <li><b>Showcase it (Track E):</b> the capture COP dashboard and human-on-the-loop AI assist.</li>
+          <li><b>Scale it (Track F):</b> cloud, SSO, and a CUI-compliant deployment path — sequenced against security.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section aria-label="Guardrails">
+      <div class="note">
+        <p><b style="color:var(--ink)">Guardrails.</b> Do not become a general-purpose Visio/Lucid — the moat is that this is governed, deterministic, and proposal-specific. Keep the zero-dependency, export-fidelity ethos and the "nothing leaves the device" default (it is a security feature, not a limitation). Treat CUI handling as the gate for anything cloud or multi-user. Free-form and AI stay opt-in; saved data keeps every artifact reproducible.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <div>
+        <div class="eyebrow">Astrion Org Chart Builder · strategy brief</div>
+        <p>Directional, for discussion with capture leadership. Effort/impact chips are relative estimates, not commitments. Sequencing assumes the current zero-dependency, brand-locked architecture is preserved.</p>
+      </div>
+      <div>
+        <div class="eyebrow">Method</div>
+        <p>Grounded in the shipped codebase (model, layout engine, templates, export) and standard GovCon capture / Shipley proposal practice.</p>
+      </div>
+    </div>
+  </footer>
+</div>
