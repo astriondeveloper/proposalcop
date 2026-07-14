@@ -1,7 +1,7 @@
 import type { CommLink, Direction, Group, LegendItem, OrgChart, OrgNode, RefKind } from './model'
 import { clone, visit } from './model'
 import { computeCompliance, REF_KIND_LABEL } from './compliance'
-import { metrics as M } from './theme'
+import { metrics as M, readableText, variantFill } from './theme'
 
 /*
  * Deterministic layout engine. Pure functions: the same OrgChart always
@@ -81,6 +81,36 @@ export interface ComplianceOverlay {
   panel: Rect
 }
 
+/** One task bar in the transition-schedule (timeline) layout. */
+export interface TimelineBar {
+  node: OrgNode
+  label: string
+  depth: number
+  y: number
+  rowH: number
+  milestone: boolean
+  barX: number
+  barW: number
+  fill: string
+  text: string
+}
+
+/** Geometry for the 'timeline' layout: a Gantt-style schedule. */
+export interface TimelineLayout {
+  gutter: number
+  plotX: number
+  plotW: number
+  axisY: number
+  top: number
+  rowH: number
+  rowGap: number
+  bars: TimelineBar[]
+  ticks: { x: number; label: string }[]
+  phases: { label: string; x: number }[]
+  unit: 'day' | 'week' | 'month'
+  span: number
+}
+
 export interface Layout {
   placed: PlacedNode[]
   /** Reporting-line connector paths. */
@@ -90,6 +120,8 @@ export interface Layout {
   legend: LegendLayout | null
   title: { text: string; x: number; y: number; w: number } | null
   compliance: ComplianceOverlay | null
+  /** Transition-schedule geometry when the 'timeline' layout is active. */
+  timeline: TimelineLayout | null
   width: number
   height: number
 }
@@ -508,7 +540,7 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
   const width = Math.max(contentRight, titleRight, complianceRight) + M.canvasPad
   const height = Math.max(maxY, legend ? legend.y + legend.h : 0, complianceBottom) + M.canvasPad
 
-  return { placed, connectors, zones, comms, legend, title, compliance, width, height }
+  return { placed, connectors, zones, comms, legend, title, compliance, timeline: null, width, height }
 }
 
 /* --------------------------------------------------- manual overrides */
@@ -1023,6 +1055,116 @@ export function withWbsNumbers(chart: OrgChart): OrgChart {
   return next
 }
 
+/* --------------------------------------------------------- timeline (Gantt) */
+
+const TL_ROW_H = 30
+const TL_ROW_GAP = 6
+const TL_PLOT_W = 760
+const TL_AXIS_H = 34 // headroom above the first row for axis labels
+const TL_GAP = 12 // gap between axis and the first row
+
+/**
+ * Transition / phase-in schedule. Visible nodes (DFS order) become task rows;
+ * each carries `start` and `duration` in schedule units, or renders as a
+ * milestone diamond. Deterministic geometry over a linear time axis, with phase
+ * markers (default 30/60/90 for day units) and quarter-span ticks.
+ */
+function layoutTimeline(chart: OrgChart): Layout {
+  const tasks: { node: OrgNode; depth: number }[] = []
+  visit(chart.roots, (n, _p, depth) => {
+    if (n.variant !== 'hidden') tasks.push({ node: n, depth })
+  })
+
+  const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  const startOf = (n: OrgNode) => Math.max(0, num(n.start))
+  const durOf = (n: OrgNode) => (n.milestone ? 0 : Math.max(0, num(n.duration)))
+  const endOf = (n: OrgNode) => startOf(n) + durOf(n)
+
+  const maxEnd = tasks.reduce((m, t) => Math.max(m, endOf(t.node)), 0)
+  const unit = chart.schedule?.unit ?? 'day'
+  const span = Math.max(1, chart.schedule?.span ?? maxEnd)
+
+  const labelW = (t: { node: OrgNode; depth: number }) =>
+    textWidth(t.node.title, 12) + t.depth * 12
+  const gutter = Math.min(360, Math.max(150, Math.max(0, ...tasks.map(labelW)) + 24))
+
+  const oy = M.canvasPad + (chart.meta.showTitle && chart.meta.title.trim() ? 44 : 0)
+  const axisY = oy + TL_AXIS_H
+  const plotX = M.canvasPad + gutter
+  const plotW = TL_PLOT_W
+  const perUnit = plotW / span
+  const at = (u: number) => plotX + u * perUnit
+  const top = axisY + TL_GAP
+
+  const bars: TimelineBar[] = tasks.map((t, i) => {
+    const v = t.node.color
+      ? { fill: t.node.color, text: readableText(t.node.color) }
+      : (variantFill[t.node.variant] ?? variantFill.secondary)
+    return {
+      node: t.node,
+      label: t.node.title,
+      depth: t.depth,
+      y: top + i * (TL_ROW_H + TL_ROW_GAP),
+      rowH: TL_ROW_H,
+      milestone: !!t.node.milestone,
+      barX: at(startOf(t.node)),
+      barW: Math.max(0, durOf(t.node) * perUnit),
+      fill: v.fill,
+      text: v.text,
+    }
+  })
+
+  let phaseSrc = chart.schedule?.phases
+  if (!phaseSrc && unit === 'day') {
+    phaseSrc = [30, 60, 90].filter((d) => d <= span).map((d) => ({ label: `${d}-day`, at: d }))
+  }
+  const phases = (phaseSrc ?? [])
+    .filter((p) => p.at >= 0 && p.at <= span)
+    .map((p) => ({ label: p.label, x: at(p.at) }))
+
+  const abbr = unit === 'day' ? 'D' : unit === 'week' ? 'W' : 'M'
+  const tickUnits = [...new Set([0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(span * f)))]
+  const ticks = tickUnits.map((u) => ({ x: at(u), label: `${abbr}${u}` }))
+
+  const bottom = bars.length ? bars[bars.length - 1].y + TL_ROW_H : top + TL_ROW_H
+  const title =
+    chart.meta.showTitle && chart.meta.title.trim()
+      ? {
+          text: chart.meta.title,
+          x: M.canvasPad,
+          y: M.canvasPad + 22,
+          w: textWidth(chart.meta.title.toUpperCase(), 20, true) * TITLE_BAR_SCALE,
+        }
+      : null
+
+  const timeline: TimelineLayout = {
+    gutter,
+    plotX,
+    plotW,
+    axisY,
+    top,
+    rowH: TL_ROW_H,
+    rowGap: TL_ROW_GAP,
+    bars,
+    ticks,
+    phases,
+    unit,
+    span,
+  }
+  return {
+    placed: [],
+    connectors: [],
+    zones: [],
+    comms: [],
+    legend: null,
+    title,
+    compliance: null,
+    timeline,
+    width: plotX + plotW + M.canvasPad,
+    height: bottom + M.canvasPad,
+  }
+}
+
 export function layoutChart(input: OrgChart): Layout {
   // WBS numbering is a view concern: bake outline numbers into titles on a copy
   // so the deterministic layout and exports need no structural change.
@@ -1032,6 +1174,7 @@ export function layoutChart(input: OrgChart): Layout {
   if (mode === 'layered') return layoutLayered(chart)
   if (mode === 'matrix') return layoutMatrix(chart)
   if (mode === 'swimlane') return layoutSwimlane(chart)
+  if (mode === 'timeline') return layoutTimeline(chart)
 
   const dir: Direction = chart.meta.direction ?? 'TB'
   const vertical = dir === 'TB' || dir === 'BT'

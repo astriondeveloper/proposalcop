@@ -85,6 +85,7 @@ const LAYOUT_MODES: { value: LayoutMode; label: string }[] = [
   { value: 'layered', label: 'Layered (ranked rows)' },
   { value: 'matrix', label: 'Matrix (grid by group)' },
   { value: 'swimlane', label: 'Swimlane (lanes by group)' },
+  { value: 'timeline', label: 'Timeline (transition schedule)' },
 ]
 
 const DIRECTIONS: { value: Direction; label: string }[] = [
@@ -328,6 +329,37 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
       </fieldset>
 
       <fieldset>
+        <legend>Schedule (timeline layout)</legend>
+        <div className="two-col">
+          <label>Start
+            <input
+              type="number"
+              value={node.start ?? ''}
+              placeholder="0"
+              onChange={(e) => patch({ start: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
+            />
+          </label>
+          <label>Duration
+            <input
+              type="number"
+              value={node.duration ?? ''}
+              placeholder="0"
+              onChange={(e) => patch({ duration: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
+            />
+          </label>
+        </div>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={!!node.milestone}
+            onChange={(e) => patch({ milestone: e.target.checked || undefined })}
+          />
+          Milestone (diamond marker)
+        </label>
+        <p className="hint">Used by the Timeline layout; units match the schedule (days by default).</p>
+      </fieldset>
+
+      <fieldset>
         <legend>References (compliance)</legend>
         {(node.refs ?? []).map((r, i) => (
           <div key={i} className="detail-row">
@@ -451,6 +483,46 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
         </select>
       </label>
+      {chart.meta.layout === 'timeline' && (
+        <fieldset>
+          <legend>Schedule</legend>
+          <div className="two-col">
+            <label>Unit
+              <select
+                value={chart.schedule?.unit ?? 'day'}
+                onChange={(e) =>
+                  onChange({
+                    ...chart,
+                    schedule: { ...(chart.schedule ?? {}), unit: e.target.value as 'day' | 'week' | 'month' },
+                  })
+                }
+              >
+                <option value="day">Days</option>
+                <option value="week">Weeks</option>
+                <option value="month">Months</option>
+              </select>
+            </label>
+            <label>Span (blank = auto)
+              <input
+                type="number"
+                value={chart.schedule?.span ?? ''}
+                placeholder="auto"
+                onChange={(e) =>
+                  onChange({
+                    ...chart,
+                    schedule: {
+                      ...(chart.schedule ?? { unit: 'day' }),
+                      span: e.target.value === '' ? undefined : Math.max(1, Number(e.target.value)),
+                    },
+                  })
+                }
+              />
+            </label>
+          </div>
+          <p className="hint">Phase markers default to 30/60/90 for day units. Edit phases in the JSON tab.</p>
+        </fieldset>
+      )}
+
       <button onClick={() => { const r = addRoot(chart); onChange(r.chart); onSelect(r.newId) }}>
         + Add independent tree / column
       </button>

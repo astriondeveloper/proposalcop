@@ -749,7 +749,7 @@ export default function App() {
               setSelectedId(null)
             }}
           >
-            {view.placed.length === 0 ? (
+            {view.placed.length === 0 && !view.timeline ? (
               <div className="empty-state" onClick={(e) => e.stopPropagation()}>
                 <h2>Nothing to show yet</h2>
                 <p>This chart has no visible boxes. Start from a template, or add a box from the Boxes panel.</p>

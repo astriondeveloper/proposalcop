@@ -735,6 +735,53 @@ function teaming(): OrgChart {
   }
 }
 
+/** Template 10 — a 90-day transition / phase-in schedule for the timeline
+ *  layout. Tasks carry start + duration in days; milestones render as diamonds;
+ *  30/60/90-day gates are phase markers. */
+function transitionSchedule(): OrgChart {
+  const task = (
+    title: string,
+    start: number,
+    duration: number,
+    variant: OrgNode['variant'] = 'secondary',
+    children?: OrgNode[],
+  ): OrgNode => node({ title, variant, start, duration, ...(children ? { children } : {}) })
+  const ms = (title: string, at: number): OrgNode =>
+    node({ title, variant: 'accent', start: at, milestone: true })
+
+  return {
+    version: 1,
+    meta: { title: '90-Day Transition & Phase-In', showTitle: true, layout: 'timeline' },
+    schedule: {
+      unit: 'day',
+      span: 120,
+      phases: [
+        { label: '30-Day', at: 30 },
+        { label: '60-Day', at: 60 },
+        { label: 'FOC (90)', at: 90 },
+      ],
+    },
+    roots: [
+      ms('Contract Award', 0),
+      task('Mobilization', 0, 30, 'primary', [
+        task('Key Personnel Onboarding', 0, 20, 'tertiary'),
+        task('Facilities & IT Setup', 5, 25, 'tertiary'),
+        task('Security Clearances', 0, 45, 'tertiary'),
+      ]),
+      task('Knowledge Transfer', 10, 45, 'primary', [
+        task('Incumbent Shadowing', 10, 25, 'tertiary'),
+        task('Process Documentation', 20, 30, 'tertiary'),
+      ]),
+      task('Systems Cutover', 45, 25, 'primary'),
+      ms('Full Operational Capability', 90),
+      task('Steady-State Operations', 90, 30, 'secondary'),
+    ],
+    groups: [],
+    comms: [],
+    legend: [],
+  }
+}
+
 export const templates: { key: string; label: string; build: () => OrgChart }[] = [
   { key: 'simple-hierarchy', label: 'Simple Hierarchy (clean top-down)', build: simpleHierarchy },
   { key: 'functional-divisions', label: 'Functional Divisions (department stacks)', build: functionalDivisions },
@@ -742,6 +789,7 @@ export const templates: { key: string; label: string; build: () => OrgChart }[] 
   { key: 'director-level', label: 'Director Level (PWS & deliverables)', build: directorLevel },
   { key: 'wbs', label: 'Work Breakdown Structure (numbered)', build: wbs },
   { key: 'teaming', label: 'Teaming & Workshare (prime / subs)', build: teaming },
+  { key: 'transition', label: 'Transition Schedule (30/60/90-day)', build: transitionSchedule },
   { key: 'joint-venture', label: 'Joint Venture (board, PMO & TMs)', build: jointVenture },
   { key: 'mentor-protege', label: 'Mentor-Protégé JV (multi-site)', build: mentorProtege },
   { key: 'pmo-comms', label: 'PMO (lines of communication)', build: pmoComms },

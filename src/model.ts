@@ -86,6 +86,12 @@ export interface OrgNode {
   pos?: { x: number; y: number }
   /** How this node's children are arranged. */
   childLayout?: 'row' | 'stack'
+  /** Transition-schedule fields, used only by the 'timeline' layout: the task's
+   *  start offset and length in schedule units. A milestone renders as a diamond
+   *  at `start` (its duration is ignored). */
+  start?: number
+  duration?: number
+  milestone?: boolean
   children?: OrgNode[]
 }
 
@@ -147,8 +153,23 @@ export type Direction = 'TB' | 'BT' | 'LR' | 'RL'
  *  - 'radial'   root at the center, descendants on concentric rings
  *  - 'layered'  depth-aligned rows (Sugiyama-lite), cross-links pulled together
  *  - 'matrix'   2D grid: rows = depth, columns = group (or root)
- *  - 'swimlane' independent vertical lanes, one per group (or root) */
-export type LayoutMode = 'tree' | 'radial' | 'layered' | 'matrix' | 'swimlane'
+ *  - 'swimlane' independent vertical lanes, one per group (or root)
+ *  - 'timeline' transition / phase-in schedule: tasks as bars on a time axis */
+export type LayoutMode = 'tree' | 'radial' | 'layered' | 'matrix' | 'swimlane' | 'timeline'
+
+/** A labeled vertical marker on the schedule axis (e.g. a 30-day gate). */
+export interface SchedulePhase {
+  label: string
+  at: number
+}
+
+/** Configuration for the 'timeline' layout. */
+export interface Schedule {
+  unit: 'day' | 'week' | 'month'
+  /** Total units spanned by the axis. Defaults to the latest task end. */
+  span?: number
+  phases?: SchedulePhase[]
+}
 
 export interface OrgChart {
   version: 1
@@ -171,6 +192,8 @@ export interface OrgChart {
   legend: LegendItem[]
   /** Compliance register (optional). Absent on charts that don't track it. */
   compliance?: Compliance
+  /** Transition-schedule config, used by the 'timeline' layout. */
+  schedule?: Schedule
 }
 
 let counter = 0
@@ -449,7 +472,7 @@ export function normalizeChart(input: unknown): OrgChart {
   const dir = c.meta?.direction
   const dirOk = dir === 'TB' || dir === 'BT' || dir === 'LR' || dir === 'RL'
   const layout = c.meta?.layout
-  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane']
+  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline']
   const layoutOk = typeof layout === 'string' && LAYOUTS.includes(layout)
   const chart: OrgChart = {
     version: CHART_VERSION,
@@ -468,5 +491,27 @@ export function normalizeChart(input: unknown): OrgChart {
   }
   const compliance = normalizeCompliance(c.compliance)
   if (compliance) chart.compliance = compliance
+  const schedule = normalizeSchedule(c.schedule)
+  if (schedule) chart.schedule = schedule
   return sanitizeRefs(sanitizePositions(sanitizeColors(chart)))
+}
+
+/** Validate a schedule config from untrusted input. Keeps a known unit, a
+ *  finite positive span if present, and well-formed phase markers. */
+export function normalizeSchedule(input: unknown): Schedule | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const s = input as Partial<Schedule>
+  const unit = s.unit === 'day' || s.unit === 'week' || s.unit === 'month' ? s.unit : 'day'
+  const out: Schedule = { unit }
+  if (typeof s.span === 'number' && Number.isFinite(s.span) && s.span > 0) out.span = s.span
+  if (Array.isArray(s.phases)) {
+    const phases = s.phases
+      .filter(
+        (p): p is SchedulePhase =>
+          !!p && typeof p === 'object' && typeof p.at === 'number' && Number.isFinite(p.at),
+      )
+      .map((p) => ({ label: typeof p.label === 'string' ? p.label : '', at: p.at }))
+    if (phases.length) out.phases = phases
+  }
+  return out
 }

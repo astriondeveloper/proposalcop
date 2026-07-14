@@ -394,7 +394,95 @@ function CompliancePanel({ overlay }: { overlay: ComplianceOverlay }) {
   )
 }
 
+/** Transition-schedule (Gantt) renderer. Self-contained SVG: time axis with
+ *  quarter-span ticks, dashed phase markers, task bars, and milestone diamonds. */
+function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
+  const tl = layout.timeline!
+  const { width, height, title } = layout
+  const pad = M.canvasPad
+  const plotRight = tl.plotX + tl.plotW
+  const plotBottom = tl.bars.length ? tl.bars[tl.bars.length - 1].y + tl.rowH : tl.top + tl.rowH
+  const diamond = (cx: number, cy: number, r: number) =>
+    `M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fontFamily={brand.fontFamily}
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <defs>
+        <linearGradient id="skyGradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={brand.skyGradient[0]} />
+          <stop offset="50%" stopColor={brand.skyGradient[1]} />
+          <stop offset="100%" stopColor={brand.skyGradient[2]} />
+        </linearGradient>
+      </defs>
+      <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+
+      {/* Quarter-span gridlines + tick labels. */}
+      {tl.ticks.map((t, i) => (
+        <g key={`tick-${i}`}>
+          <line x1={t.x} y1={tl.axisY} x2={t.x} y2={plotBottom} stroke="#E7E7EE" strokeWidth={1} />
+          <text x={t.x} y={tl.axisY - 5} textAnchor="middle" fontSize={10.5} fill={brand.detailText}>
+            {t.label}
+          </text>
+        </g>
+      ))}
+
+      {/* Axis baseline. */}
+      <line x1={tl.plotX} y1={tl.axisY} x2={plotRight} y2={tl.axisY} stroke={brand.line} strokeWidth={1.5} />
+
+      {/* Phase markers (30/60/90-day gates), dashed and labeled above the ticks. */}
+      {tl.phases.map((p, i) => (
+        <g key={`phase-${i}`}>
+          <line x1={p.x} y1={tl.axisY} x2={p.x} y2={plotBottom} stroke={brand.comm} strokeWidth={1.4} strokeDasharray="5 4" />
+          <text x={p.x} y={tl.axisY - 19} textAnchor="middle" fontSize={10.5} fontWeight={700} fill={brand.comm}>
+            {p.label}
+          </text>
+        </g>
+      ))}
+
+      {/* Task rows: gutter label + bar or milestone diamond. */}
+      {tl.bars.map((b) => {
+        const cy = b.y + b.rowH / 2
+        return (
+          <g key={b.node.id}>
+            <text
+              x={pad + b.depth * 12}
+              y={cy + 4}
+              fontSize={12}
+              fill={brand.heading}
+              fontFamily={brand.fontFamily}
+            >
+              {truncate(b.label, 12, tl.gutter - b.depth * 12 - 12)}
+            </text>
+            {b.milestone ? (
+              <path d={diamond(b.barX, cy, 7)} fill={brand.keyGold} stroke={brand.white} strokeWidth={1} />
+            ) : b.barW > 0 ? (
+              <rect x={b.barX} y={b.y + 5} width={b.barW} height={b.rowH - 10} rx={4} fill={b.fill} />
+            ) : null}
+          </g>
+        )
+      })}
+
+      {title && (
+        <g>
+          <text x={title.x} y={title.y} fontSize={20} fontWeight={700} fill={brand.heading} fontFamily={brand.fontFamily}>
+            {title.text.toUpperCase()}
+          </text>
+          <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
+        </g>
+      )}
+    </svg>
+  )
+}
+
 export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, ariaLabel }: Props) {
+  if (layout.timeline) return <TimelineSvg layout={layout} ariaLabel={ariaLabel} />
   const { placed, connectors, zones, comms, legend, title, compliance, width, height } = layout
   const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
   const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {
