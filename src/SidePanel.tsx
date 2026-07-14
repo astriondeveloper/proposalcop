@@ -12,6 +12,7 @@ import type {
   OrgNode,
   RefKind,
   Requirement,
+  SchedulePhase,
   Variant,
 } from './model'
 import {
@@ -40,6 +41,7 @@ import {
   REF_KIND_LABEL,
 } from './compliance'
 import { exportCsv } from './export'
+import { workshareRollup } from './teaming'
 import { palette } from './theme'
 import type { ZoneStyle } from './theme'
 
@@ -430,6 +432,14 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
     .filter(({ node }) => node.variant !== 'hidden')
     .map(({ node }) => ({ id: node.id, label: node.title || '(untitled)' }))
 
+  const workshare = workshareRollup(chart)
+  const schedulePhases: SchedulePhase[] = chart.schedule?.phases ?? []
+  const setSchedulePhases = (next: SchedulePhase[]) =>
+    onChange({
+      ...chart,
+      schedule: { ...(chart.schedule ?? { unit: 'day' }), phases: next.length ? next : undefined },
+    })
+
   return (
     <div className="editor">
       <label>Chart title
@@ -519,7 +529,66 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
               />
             </label>
           </div>
-          <p className="hint">Phase markers default to 30/60/90 for day units. Edit phases in the JSON tab.</p>
+          <div className="phase-head">Phase markers</div>
+          {schedulePhases.map((p, i) => (
+            <div key={i} className="detail-row">
+              <input
+                value={p.label}
+                placeholder="30-Day"
+                aria-label="Phase label"
+                onChange={(e) => {
+                  const next = clone(schedulePhases)
+                  next[i] = { ...next[i], label: e.target.value }
+                  setSchedulePhases(next)
+                }}
+              />
+              <input
+                className="phase-at"
+                type="number"
+                value={p.at}
+                aria-label="Phase position (units)"
+                onChange={(e) => {
+                  const next = clone(schedulePhases)
+                  next[i] = { ...next[i], at: Number(e.target.value) }
+                  setSchedulePhases(next)
+                }}
+              />
+              <button
+                className="danger sm"
+                aria-label="Remove phase"
+                onClick={() => setSchedulePhases(schedulePhases.filter((_, j) => j !== i))}
+              >×</button>
+            </div>
+          ))}
+          <button className="sm" onClick={() => setSchedulePhases([...schedulePhases, { label: 'Phase', at: 30 }])}>
+            + Phase
+          </button>
+          {schedulePhases.length === 0 && (
+            <p className="hint">No custom phases — defaults to 30/60/90 for day units.</p>
+          )}
+        </fieldset>
+      )}
+
+      {workshare.entries.length > 0 && (
+        <fieldset>
+          <legend>Workshare rollup</legend>
+          <div className="cov-head">
+            <span className="cov-pct" style={{ color: workshare.balanced ? 'var(--ok)' : 'var(--warn)' }}>
+              {workshare.total}%
+            </span>
+            <span className="cov-sub">
+              {workshare.balanced
+                ? `balances across ${workshare.entries.length} teammates`
+                : `does not total 100% (${workshare.entries.length} teammates)`}
+            </span>
+          </div>
+          {workshare.entries.map((e) => (
+            <div key={e.id} className="ws-row">
+              <button className="link" onClick={() => onSelect(e.id)}>{e.title}</button>
+              <span className="ws-pct">{e.percent}%</span>
+            </div>
+          ))}
+          <p className="hint">Summed from each box's "Workshare" detail row.</p>
         </fieldset>
       )}
 

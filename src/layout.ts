@@ -1,5 +1,5 @@
 import type { CommLink, Direction, Group, LegendItem, OrgChart, OrgNode, RefKind } from './model'
-import { clone, visit } from './model'
+import { clone, visit, wbsNumbers } from './model'
 import { computeCompliance, REF_KIND_LABEL } from './compliance'
 import { metrics as M, readableText, variantFill } from './theme'
 
@@ -1035,23 +1035,11 @@ function layoutSwimlane(chart: OrgChart): Layout {
  */
 export function withWbsNumbers(chart: OrgChart): OrgChart {
   const next = clone(chart)
-  const walk = (list: OrgNode[], prefix: string) => {
-    let idx = 0
-    const process = (nodes: OrgNode[]) => {
-      for (const n of nodes) {
-        if (n.variant === 'hidden') {
-          process(n.children ?? [])
-          continue
-        }
-        idx += 1
-        const num = prefix ? `${prefix}.${idx}` : `${idx}`
-        n.title = n.title ? `${num}  ${n.title}` : num
-        walk(n.children ?? [], num)
-      }
-    }
-    process(list)
-  }
-  walk(next.roots, '')
+  const nums = wbsNumbers(next.roots)
+  visit(next.roots, (n) => {
+    const num = nums.get(n.id)
+    if (num) n.title = n.title ? `${num}  ${n.title}` : num
+  })
   return next
 }
 

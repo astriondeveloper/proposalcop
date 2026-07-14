@@ -243,6 +243,34 @@ export function allNodes(chart: OrgChart): { node: OrgNode; depth: number }[] {
   return out
 }
 
+/**
+ * Compute WBS outline numbers (1, 1.1, 1.1.1 ...) for every visible node,
+ * returning a map from node id to its number. Hidden containers are transparent:
+ * their visible children join the parent level's sequence. Structural (does not
+ * depend on the showWbsNumbers view flag), so exports and the view can share it.
+ */
+export function wbsNumbers(roots: OrgNode[]): Map<string, string> {
+  const map = new Map<string, string>()
+  const walk = (list: OrgNode[], prefix: string) => {
+    let idx = 0
+    const process = (nodes: OrgNode[]) => {
+      for (const n of nodes) {
+        if (n.variant === 'hidden') {
+          process(n.children ?? [])
+          continue
+        }
+        idx += 1
+        const num = prefix ? `${prefix}.${idx}` : `${idx}`
+        map.set(n.id, num)
+        walk(n.children ?? [], num)
+      }
+    }
+    process(list)
+  }
+  walk(roots, '')
+  return map
+}
+
 /** The complete set of on-brand fill values (uppercased for comparison). */
 const BRAND_COLORS = new Set<string>(Object.values(palette).map((c) => c.toUpperCase()))
 

@@ -224,9 +224,9 @@ describe('buildTraceabilityCsv', () => {
       { requirements: [{ id: 'r1', kind: 'PWS', ref: '1.0' }] },
     )
     const lines = buildTraceabilityCsv(chart).split('\r\n')
-    expect(lines[0]).toBe('Box,Person,Kind,Reference,In register')
-    expect(lines[1]).toBe('"Program Manager","Jane","PWS","1.0","Yes"')
-    expect(lines[2]).toBe('"Program Manager","Jane","PWS","9.9","No"')
+    expect(lines[0]).toBe('WBS,Box,Person,Kind,Reference,In register')
+    expect(lines[1]).toBe('"1","Program Manager","Jane","PWS","1.0","Yes"')
+    expect(lines[2]).toBe('"1","Program Manager","Jane","PWS","9.9","No"')
   })
 
   it('marks the register column n/a when no register exists', () => {
@@ -237,6 +237,14 @@ describe('buildTraceabilityCsv', () => {
   it('omits boxes without references', () => {
     const chart = chartOf([node('a'), node('b', { refs: [{ kind: 'SOW', ref: '2' }] })])
     expect(buildTraceabilityCsv(chart).split('\r\n')).toHaveLength(2) // header + one box
+  })
+
+  it('carries each box WBS outline number', () => {
+    const chart = chartOf([
+      node('root', { title: 'Program', children: [node('c', { title: 'Child', refs: [{ kind: 'PWS', ref: '2' }] })] }),
+    ])
+    const line = buildTraceabilityCsv(chart).split('\r\n')[1]
+    expect(line.startsWith('"1.1",')).toBe(true)
   })
 })
 

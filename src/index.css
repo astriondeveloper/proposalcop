@@ -1079,6 +1079,36 @@ body,
   }
 }
 
+/* Schedule phase-marker editor. */
+.phase-head {
+  font-size: 0.78em;
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.detail-row .phase-at {
+  flex: 0 0 70px;
+  width: 70px;
+}
+
+/* Workshare rollup rows. */
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-pct {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-semibold);
+  font-size: 0.9em;
+  color: var(--text);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0.01ms !important;
