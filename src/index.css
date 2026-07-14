@@ -892,6 +892,164 @@ body,
   box-shadow: var(--focus-ring);
 }
 
+/* ------------------------------------------------------- compliance tab */
+.cov {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+
+.cov-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cov-pct {
+  font-size: 1.7em;
+  font-weight: var(--fw-bold);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.cov-sub {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.cov-bar {
+  height: 8px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--danger) 22%, var(--surface));
+  overflow: hidden;
+}
+
+.cov-bar span {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--ok);
+  transition: width var(--dur) var(--ease);
+}
+
+.cov-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cov-kind {
+  font-size: 0.78em;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 2px 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cov-kind b {
+  color: var(--text);
+}
+
+.orphans {
+  font-size: 0.85em;
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--border));
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border-radius: var(--r-md);
+  padding: 8px 10px;
+}
+
+.orphans ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Inline text-button (orphan owner, jump-to-box). Higher specificity than
+   `.editor button` so it reads as a link, not a filled accent button. */
+.editor .link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.editor .link:hover {
+  background: none;
+  color: var(--accent-hover);
+}
+
+.status-pill {
+  flex: 0 0 auto;
+  font-size: 0.68em;
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 7px;
+  border-radius: var(--r-full);
+  white-space: nowrap;
+}
+
+.status-pill.covered {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+.status-pill.gap {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+/* Requirement rows: keep the ref input flexible and the kind select compact. */
+.req .detail-row select {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.req .req-ref {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.owners {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.editor .owner-chip {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: var(--r-full);
+  padding: 2px 9px;
+  font-size: 0.82em;
+  align-self: auto;
+}
+
+.editor .owner-chip:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.owners-none {
+  font-size: 0.82em;
+  color: var(--faint);
+  font-style: italic;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0.01ms !important;

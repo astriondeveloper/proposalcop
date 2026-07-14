@@ -27,6 +27,40 @@ export interface DetailRow {
   text: string
 }
 
+/** Kinds of solicitation reference a box can be traced to. */
+export type RefKind = 'PWS' | 'SOW' | 'CDRL' | 'SectionL' | 'SectionM'
+
+/** The reference kinds, in display order. */
+export const REF_KINDS: RefKind[] = ['PWS', 'SOW', 'CDRL', 'SectionL', 'SectionM']
+
+/** A structured solicitation reference carried by a node: which kind of
+ *  document, and the paragraph / line id within it (e.g. PWS 3.2.1). This is
+ *  the queryable counterpart of the freeform "PWS:" detail rows — it is what
+ *  rolls boxes up into the compliance matrix. */
+export interface NodeRef {
+  kind: RefKind
+  ref: string
+}
+
+/** An authoritative requirement in the chart's compliance register: the
+ *  "must be covered" set that coverage and gap detection are computed against. */
+export interface Requirement {
+  id: string
+  kind: RefKind
+  ref: string
+  title?: string
+}
+
+/** Chart-level compliance register. */
+export interface Compliance {
+  requirements: Requirement[]
+}
+
+/** Type guard for a reference kind. */
+export function isRefKind(v: unknown): v is RefKind {
+  return v === 'PWS' || v === 'SOW' || v === 'CDRL' || v === 'SectionL' || v === 'SectionM'
+}
+
 export interface OrgNode {
   id: string
   title: string
@@ -37,6 +71,9 @@ export interface OrgNode {
   bullets?: string[]
   /** White detail rows attached under the box (PWS / Deliverables / ...). */
   details?: DetailRow[]
+  /** Structured solicitation references this box addresses (for compliance
+   *  traceability). Independent of the display-only `details` rows. */
+  refs?: NodeRef[]
   badges?: BadgeType[]
   variant: Variant
   /** Optional fill override (hex). Wins over the variant color; text color is
@@ -121,6 +158,8 @@ export interface OrgChart {
   groups: Group[]
   comms: CommLink[]
   legend: LegendItem[]
+  /** Compliance register (optional). Absent on charts that don't track it. */
+  compliance?: Compliance
 }
 
 let counter = 0
@@ -197,6 +236,56 @@ export function sanitizePositions(chart: OrgChart): OrgChart {
     if (p && !(Number.isFinite(p.x) && Number.isFinite(p.y))) delete n.pos
   })
   return chart
+}
+
+/** Keep only well-formed node references (valid kind + non-empty ref string),
+ *  trimming the ref. Drops the whole `refs` field when nothing valid remains,
+ *  so a hand-edited or imported chart never carries junk references. */
+export function sanitizeRefs(chart: OrgChart): OrgChart {
+  visit(chart.roots, (n) => {
+    if (!Array.isArray(n.refs)) {
+      if (n.refs !== undefined) delete n.refs
+      return
+    }
+    const out: NodeRef[] = []
+    for (const r of n.refs) {
+      if (r && typeof r === 'object' && isRefKind(r.kind)) {
+        const ref = String(r.ref ?? '').trim()
+        if (ref) out.push({ kind: r.kind, ref })
+      }
+    }
+    if (out.length) n.refs = out
+    else delete n.refs
+  })
+  return chart
+}
+
+/** Validate and de-duplicate a compliance register from untrusted input. Drops
+ *  malformed requirements (bad kind or empty ref), fills a fresh id when one is
+ *  missing, and collapses duplicate (kind, ref) pairs. Returns undefined when
+ *  nothing valid remains. */
+export function normalizeCompliance(input: unknown): Compliance | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const reqs = (input as Compliance).requirements
+  if (!Array.isArray(reqs)) return undefined
+  const seen = new Set<string>()
+  const out: Requirement[] = []
+  for (const r of reqs) {
+    if (!r || typeof r !== 'object') continue
+    const kind = (r as Requirement).kind
+    if (!isRefKind(kind)) continue
+    const ref = String((r as Requirement).ref ?? '').trim()
+    if (!ref) continue
+    const key = `${kind} ${ref.toLowerCase()}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const rawId = (r as Requirement).id
+    const id = typeof rawId === 'string' && rawId ? rawId : uid('req')
+    const rawTitle = (r as Requirement).title
+    const title = typeof rawTitle === 'string' && rawTitle.trim() ? rawTitle.trim() : undefined
+    out.push(title ? { id, kind, ref, title } : { id, kind, ref })
+  }
+  return out.length ? { requirements: out } : undefined
 }
 
 export function findNode(chart: OrgChart, id: string): OrgNode | null {
@@ -364,5 +453,7 @@ export function normalizeChart(input: unknown): OrgChart {
     comms: Array.isArray(c.comms) ? c.comms.map(normalizeEdge) : [],
     legend: Array.isArray(c.legend) ? c.legend : [],
   }
-  return sanitizePositions(sanitizeColors(chart))
+  const compliance = normalizeCompliance(c.compliance)
+  if (compliance) chart.compliance = compliance
+  return sanitizeRefs(sanitizePositions(sanitizeColors(chart)))
 }

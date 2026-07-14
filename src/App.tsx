@@ -614,7 +614,7 @@ export default function App() {
               <polygon points="20,0 20,15 2,15" fill="#442C81" />
             </svg>
           </span>
-          <strong>ASTRION</strong>&nbsp;Org Chart Builder
+          <strong>ASTRION</strong>&nbsp;Proposal COP
         </div>
 
         <select

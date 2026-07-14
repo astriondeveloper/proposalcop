@@ -1,8 +1,12 @@
-# Roadmap — to a free-form, TRL 9 chart builder
+# Roadmap — Astrion Proposal COP
 
-This plan takes the Astrion Org Chart Builder from a working tidy-tree generator
-to a modern, direct-manipulation canvas that can express **abstract** charts (any
-shape, any direction, any connection) while staying brand-locked and export-clean.
+> Formerly "Astrion Org Chart Builder." The engine and phases below are unchanged;
+> the product is now the Proposal Common Operating Picture. See
+> `docs/capture-cop-brief.html` for the enterprise expansion tracks (A–F).
+
+This plan takes the tool from a working tidy-tree generator to a modern,
+direct-manipulation canvas that can express **abstract** charts (any shape, any
+direction, any connection) while staying brand-locked and export-clean.
 
 An interactive version of this roadmap was shared for review during planning.
 

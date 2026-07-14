@@ -1,11 +1,22 @@
-# Astrion Org Chart Builder
+# Astrion Proposal COP
 
-A repeatable, browser-based app that produces **Astrion-branded organization charts
-for proposals**. Charts are defined as structured JSON and rendered through a
-deterministic layout engine — the same input always produces the same professional
-output — while staying fully adaptable per customer: roles, PWS references,
-deliverables, interfaces, lines of communication, mission-focus groupings, badges,
-and legends.
+**Proposal Common Operating Picture** — a repeatable, browser-based tool for the
+Astrion proposal and capture team. It produces **Astrion-branded proposal graphics**
+and ties them to the solicitation: charts are defined as structured JSON and rendered
+through a deterministic layout engine (the same input always produces the same
+professional output), while staying fully adaptable per customer: roles, PWS
+references, deliverables, interfaces, lines of communication, mission-focus
+groupings, badges, and legends.
+
+Today the tool renders **organization charts** with a **compliance & traceability**
+layer: every box can carry PWS / SOW / CDRL / Section L / Section M references, and
+the app rolls those up into a live compliance matrix with coverage and gap detection.
+The engine underneath is a governed, deterministic diagram engine — the roadmap
+(`ROADMAP.md`) and strategy brief (`docs/capture-cop-brief.html`) lay out the path
+to the broader proposal-graphics and capture platform.
+
+> Evolved from the Astrion Org Chart Builder. Same zero-dependency, brand-locked,
+> export-clean engine; broader mission.
 
 ![Built with Vite + React + TypeScript](https://img.shields.io/badge/stack-Vite%20%2B%20React%20%2B%20TS-1D4F91)
 

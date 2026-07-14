@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type {
   BadgeType,
@@ -10,6 +10,8 @@ import type {
   LegendMarker,
   OrgChart,
   OrgNode,
+  RefKind,
+  Requirement,
   Variant,
 } from './model'
 import {
@@ -23,10 +25,20 @@ import {
   findNode,
   moveNode,
   normalizeChart,
+  REF_KINDS,
   setNodePos,
   uid,
   updateNode,
 } from './model'
+import {
+  buildComplianceCsv,
+  computeCompliance,
+  normalizeRef,
+  parseRequirements,
+  refsFromDetails,
+  REF_KIND_LABEL,
+} from './compliance'
+import { exportCsv } from './export'
 import { palette } from './theme'
 import type { ZoneStyle } from './theme'
 
@@ -313,6 +325,68 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           + Detail row
         </button>
       </fieldset>
+
+      <fieldset>
+        <legend>References (compliance)</legend>
+        {(node.refs ?? []).map((r, i) => (
+          <div key={i} className="detail-row">
+            <select
+              className="detail-label"
+              aria-label="Reference kind"
+              value={r.kind}
+              onChange={(e) => {
+                const refs = clone(node.refs ?? [])
+                refs[i] = { ...refs[i], kind: e.target.value as RefKind }
+                patch({ refs })
+              }}
+            >
+              {REF_KINDS.map((k) => <option key={k} value={k}>{REF_KIND_LABEL[k]}</option>)}
+            </select>
+            <input
+              className="detail-text"
+              value={r.ref}
+              placeholder="3.2.1"
+              onChange={(e) => {
+                const refs = clone(node.refs ?? [])
+                refs[i] = { ...refs[i], ref: e.target.value }
+                patch({ refs })
+              }}
+            />
+            <button
+              className="danger sm"
+              aria-label="Remove reference"
+              onClick={() => patch({ refs: (node.refs ?? []).filter((_, j) => j !== i) })}
+            >×</button>
+          </div>
+        ))}
+        <div className="btn-row">
+          <button onClick={() => patch({ refs: [...(node.refs ?? []), { kind: 'PWS', ref: '' }] })}>
+            + Reference
+          </button>
+          <button
+            className="sm"
+            title="Create references from this box's PWS / SOW / CDRL detail rows"
+            onClick={() => {
+              const existing = new Set((node.refs ?? []).map((r) => `${r.kind} ${normalizeRef(r.ref)}`))
+              const merged = [...(node.refs ?? [])]
+              for (const r of refsFromDetails(node)) {
+                const key = `${r.kind} ${normalizeRef(r.ref)}`
+                if (!existing.has(key)) {
+                  existing.add(key)
+                  merged.push(r)
+                }
+              }
+              patch({ refs: merged })
+            }}
+          >
+            Pull from detail rows
+          </button>
+        </div>
+        <p className="hint">
+          Ties this box to the solicitation. References roll up into the Compliance tab for
+          coverage and gap detection.
+        </p>
+      </fieldset>
     </div>
   )
 }
@@ -563,8 +637,170 @@ function JsonEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
   )
 }
 
+function ComplianceEditor({ chart, onChange, onSelect }: Props) {
+  const requirements = chart.compliance?.requirements ?? []
+  const report = useMemo(() => computeCompliance(chart), [chart])
+  const [bulk, setBulk] = useState('')
+  const [bulkKind, setBulkKind] = useState<RefKind>('PWS')
+
+  const setRequirements = (reqs: Requirement[]) =>
+    onChange({ ...chart, compliance: reqs.length ? { requirements: reqs } : undefined })
+
+  const patchReq = (i: number, p: Partial<Requirement>) => {
+    const reqs = clone(requirements)
+    reqs[i] = { ...reqs[i], ...p }
+    setRequirements(reqs)
+  }
+
+  const parsed = parseRequirements(bulk, bulkKind).filter((r) => r.ref.trim())
+  const addBulk = () => {
+    const existing = new Set(requirements.map((r) => `${r.kind} ${normalizeRef(r.ref)}`))
+    const merged = [...requirements]
+    for (const r of parsed) {
+      const key = `${r.kind} ${normalizeRef(r.ref)}`
+      if (!existing.has(key)) {
+        existing.add(key)
+        merged.push({ ...r, id: uid('req') })
+      }
+    }
+    setRequirements(merged)
+    setBulk('')
+  }
+
+  return (
+    <div className="editor">
+      <p className="hint">
+        The register is the authoritative list of solicitation requirements. Each box's References
+        are matched against it, so coverage and gaps update live.
+      </p>
+
+      {report.coverage.total > 0 && (
+        <div className="cov">
+          <div className="cov-head">
+            <span className="cov-pct">{report.coverage.pct}%</span>
+            <span className="cov-sub">
+              {report.coverage.covered} of {report.coverage.total} requirements covered
+            </span>
+          </div>
+          <div className="cov-bar" role="img" aria-label={`${report.coverage.pct}% covered`}>
+            <span style={{ width: `${report.coverage.pct}%` }} />
+          </div>
+          <div className="cov-kinds">
+            {report.byKind.map((k) => (
+              <span key={k.kind} className="cov-kind">
+                {REF_KIND_LABEL[k.kind]} <b>{k.covered}/{k.total}</b>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {report.orphans.length > 0 && (
+        <div className="orphans" role="alert">
+          <b>{report.orphans.length}</b> reference{report.orphans.length === 1 ? ' matches' : 's match'} no
+          registered requirement (typo, or a requirement to add):
+          <ul>
+            {report.orphans.map((o, i) => (
+              <li key={i}>
+                <button className="link" onClick={() => onSelect(o.nodeId)}>{o.title}</button>
+                {' → '}
+                {REF_KIND_LABEL[o.kind]} {o.ref}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <fieldset>
+        <legend>Requirements register</legend>
+        {requirements.length === 0 && (
+          <p className="hint">None yet. Add one at a time, or paste an outline below.</p>
+        )}
+        {report.rows.map((row, i) => (
+          <div key={row.requirement.id} className="req card">
+            <div className="detail-row">
+              <span className={`status-pill ${row.status}`}>
+                {row.status === 'covered' ? 'Covered' : 'Gap'}
+              </span>
+              <select
+                aria-label="Requirement kind"
+                value={row.requirement.kind}
+                onChange={(e) => patchReq(i, { kind: e.target.value as RefKind })}
+              >
+                {REF_KINDS.map((k) => <option key={k} value={k}>{REF_KIND_LABEL[k]}</option>)}
+              </select>
+              <input
+                className="req-ref"
+                aria-label="Requirement reference"
+                value={row.requirement.ref}
+                placeholder="3.2.1"
+                onChange={(e) => patchReq(i, { ref: e.target.value })}
+              />
+              <button
+                className="danger sm"
+                aria-label="Remove requirement"
+                onClick={() => setRequirements(requirements.filter((x) => x.id !== row.requirement.id))}
+              >×</button>
+            </div>
+            <input
+              aria-label="Requirement title"
+              value={row.requirement.title ?? ''}
+              placeholder="Short description (optional)"
+              onChange={(e) => patchReq(i, { title: e.target.value || undefined })}
+            />
+            <div className="owners">
+              {row.owners.length ? (
+                row.owners.map((o) => (
+                  <button
+                    key={o.id}
+                    className="owner-chip"
+                    title="Select this box"
+                    onClick={() => onSelect(o.id)}
+                  >
+                    {o.title}
+                  </button>
+                ))
+              ) : (
+                <span className="owners-none">No box addresses this yet</span>
+              )}
+            </div>
+          </div>
+        ))}
+        <button onClick={() => setRequirements([...requirements, { id: uid('req'), kind: 'PWS', ref: '' }])}>
+          + Requirement
+        </button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Bulk add from outline</legend>
+        <label>Kind for pasted lines
+          <select value={bulkKind} onChange={(e) => setBulkKind(e.target.value as RefKind)}>
+            {REF_KINDS.map((k) => <option key={k} value={k}>{REF_KIND_LABEL[k]}</option>)}
+          </select>
+        </label>
+        <textarea
+          rows={5}
+          value={bulk}
+          placeholder={'One requirement per line, e.g.\n3.2.1 Manage the program schedule\n3.2.2 Staff key positions'}
+          onChange={(e) => setBulk(e.target.value)}
+        />
+        <button disabled={!parsed.length} onClick={addBulk}>
+          Add {parsed.length || ''} requirement{parsed.length === 1 ? '' : 's'}
+        </button>
+      </fieldset>
+
+      <button
+        disabled={!requirements.length}
+        onClick={() => exportCsv(buildComplianceCsv(report), chart.meta.title)}
+      >
+        Export compliance CSV
+      </button>
+    </div>
+  )
+}
+
 export function SidePanel({ width, ...props }: Props & { width: number }) {
-  const [tab, setTab] = useState<'build' | 'chart' | 'json'>('build')
+  const [tab, setTab] = useState<'build' | 'chart' | 'compliance' | 'json'>('build')
 
   // Selecting a box anywhere (including clicking it in the chart) jumps the
   // panel to the Boxes tab so its editor and tree row are shown immediately.
@@ -583,6 +819,7 @@ export function SidePanel({ width, ...props }: Props & { width: number }) {
       <div className="tabs" role="group" aria-label="Editor sections">
         <button aria-pressed={tab === 'build'} className={tab === 'build' ? 'active' : ''} onClick={() => setTab('build')}>Boxes</button>
         <button aria-pressed={tab === 'chart'} className={tab === 'chart' ? 'active' : ''} onClick={() => setTab('chart')}>Chart</button>
+        <button aria-pressed={tab === 'compliance'} className={tab === 'compliance' ? 'active' : ''} onClick={() => setTab('compliance')}>Compliance</button>
         <button aria-pressed={tab === 'json'} className={tab === 'json' ? 'active' : ''} onClick={() => setTab('json')}>JSON</button>
       </div>
       {tab === 'build' && (
@@ -592,6 +829,7 @@ export function SidePanel({ width, ...props }: Props & { width: number }) {
         </>
       )}
       {tab === 'chart' && <ChartEditor {...props} />}
+      {tab === 'compliance' && <ComplianceEditor {...props} />}
       {tab === 'json' && <JsonEditor chart={props.chart} onChange={props.onChange} />}
     </aside>
   )

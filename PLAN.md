@@ -1,4 +1,7 @@
-# Astrion Org Chart Builder — Plan
+# Astrion Proposal COP — Plan
+
+> Formerly "Astrion Org Chart Builder." Product renamed to the Proposal Common
+> Operating Picture; the architecture and design goals below still hold.
 
 ## Purpose
 

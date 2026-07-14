@@ -92,3 +92,11 @@ export function exportJson(chart: OrgChart): void {
     `${safeName(chart.meta.title)}.json`,
   )
 }
+
+/** Download prebuilt CSV text as `<title>-<suffix>.csv`. */
+export function exportCsv(csv: string, title: string, suffix = 'compliance'): void {
+  download(
+    new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8' }),
+    `${safeName(title)}-${suffix}.csv`,
+  )
+}
