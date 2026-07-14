@@ -152,7 +152,15 @@ export type LayoutMode = 'tree' | 'radial' | 'layered' | 'matrix' | 'swimlane'
 
 export interface OrgChart {
   version: 1
-  meta: { title: string; showTitle: boolean; direction?: Direction; layout?: LayoutMode }
+  meta: {
+    title: string
+    showTitle: boolean
+    direction?: Direction
+    layout?: LayoutMode
+    /** Draw the compliance overlay (per-box status badges + a gaps panel) on
+     *  the chart itself. Off unless explicitly enabled. */
+    showComplianceOverlay?: boolean
+  }
   /** Independent trees/columns laid out left to right. */
   roots: OrgNode[]
   groups: Group[]
@@ -447,6 +455,7 @@ export function normalizeChart(input: unknown): OrgChart {
       showTitle: c.meta?.showTitle !== false,
       ...(dirOk ? { direction: dir } : {}),
       ...(layoutOk ? { layout } : {}),
+      ...(c.meta?.showComplianceOverlay === true ? { showComplianceOverlay: true } : {}),
     },
     roots: c.roots as OrgNode[],
     groups: Array.isArray(c.groups) ? c.groups : [],

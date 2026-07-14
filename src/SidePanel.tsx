@@ -413,6 +413,16 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
         />
         Show title on chart
       </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={!!chart.meta.showComplianceOverlay}
+          onChange={(e) =>
+            onChange({ ...chart, meta: { ...chart.meta, showComplianceOverlay: e.target.checked || undefined } })
+          }
+        />
+        Show compliance on chart (box badges + gaps panel)
+      </label>
       <label>Layout
         <select
           value={chart.meta.layout ?? 'tree'}

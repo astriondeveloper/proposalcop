@@ -8,6 +8,8 @@ import {
 } from './compliance'
 import { normalizeChart } from './model'
 import type { OrgChart, OrgNode } from './model'
+import { layoutChart } from './layout'
+import { templates } from './templates'
 
 function chartOf(roots: OrgNode[], compliance?: OrgChart['compliance']): OrgChart {
   return {
@@ -249,5 +251,64 @@ describe('normalizeChart — compliance + refs', () => {
       compliance: { requirements: [{ kind: 'NOPE', ref: '1' }] },
     })
     expect(chart.compliance).toBeUndefined()
+  })
+
+  it('preserves the showComplianceOverlay flag only when true', () => {
+    const on = normalizeChart({
+      roots: [{ id: 'a', title: 'A', variant: 'primary' }],
+      meta: { title: 'X', showComplianceOverlay: true },
+    })
+    expect(on.meta.showComplianceOverlay).toBe(true)
+    const off = normalizeChart({
+      roots: [{ id: 'a', title: 'A', variant: 'primary' }],
+      meta: { title: 'X', showComplianceOverlay: false },
+    })
+    expect(off.meta.showComplianceOverlay).toBeUndefined()
+  })
+})
+
+describe('layout compliance overlay', () => {
+  const chart = (): OrgChart =>
+    chartOf(
+      [
+        node('pm', { title: 'PM', refs: [{ kind: 'PWS', ref: '1' }] }),
+        node('bad', { title: 'Bad', refs: [{ kind: 'PWS', ref: '9' }] }),
+      ],
+      { requirements: [{ id: 'r1', kind: 'PWS', ref: '1' }, { id: 'r2', kind: 'PWS', ref: '2' }] },
+    )
+
+  it('is null when the overlay flag is off', () => {
+    expect(layoutChart(chart()).compliance).toBeNull()
+  })
+
+  it('is null when enabled but there is no register', () => {
+    const c = chartOf([node('pm')])
+    c.meta.showComplianceOverlay = true
+    expect(layoutChart(c).compliance).toBeNull()
+  })
+
+  it('reports coverage, gaps, and orphan boxes when enabled', () => {
+    const c = chart()
+    c.meta.showComplianceOverlay = true
+    const overlay = layoutChart(c).compliance
+    expect(overlay).not.toBeNull()
+    expect(overlay!.coverage).toEqual({ covered: 1, total: 2, pct: 50 })
+    expect(overlay!.gaps.map((g) => g.ref)).toEqual(['2'])
+    expect(overlay!.orphanNodeIds).toEqual(['bad'])
+    expect(overlay!.panel.w).toBeGreaterThan(0)
+  })
+})
+
+describe('director-level template seeds a compliance demo', () => {
+  const build = () => templates.find((t) => t.key === 'director-level')!.build()
+
+  it('enables the overlay and has partial coverage with real gaps', () => {
+    const overlay = layoutChart(build()).compliance
+    expect(overlay).not.toBeNull()
+    expect(overlay!.coverage.total).toBe(27)
+    expect(overlay!.coverage.covered).toBe(23)
+    expect(overlay!.coverage.pct).toBe(85)
+    // Every reference on a box traces to the register (no orphans in the demo).
+    expect(overlay!.orphanNodeIds).toEqual([])
   })
 })

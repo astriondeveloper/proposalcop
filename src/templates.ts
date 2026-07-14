@@ -1,4 +1,4 @@
-import type { OrgChart, OrgNode } from './model'
+import type { NodeRef, OrgChart, OrgNode, Requirement } from './model'
 import { uid } from './model'
 
 /*
@@ -9,6 +9,11 @@ import { uid } from './model'
 
 function node(partial: Partial<OrgNode> & { title: string }): OrgNode {
   return { id: uid(), variant: 'secondary', childLayout: 'row', ...partial }
+}
+
+/** Build a compliance-register requirement with a fresh id. */
+function req(kind: Requirement['kind'], ref: string, title?: string): Requirement {
+  return title ? { id: uid('req'), kind, ref, title } : { id: uid('req'), kind, ref }
 }
 
 /** Template 1 — program office with stacked capability lists + corner markers. */
@@ -80,15 +85,21 @@ function programOffice(): OrgChart {
   }
 }
 
-/** Template 2 — director level with PWS / Deliverables / Interface rows,
- *  key badges and a Mission Focus zone. */
+/** Template 2 — director level with PWS / Deliverables / Interface rows, key
+ *  badges, a Mission Focus zone, and a worked compliance example: structured
+ *  references on each leader plus a requirements register, with the on-chart
+ *  compliance overlay enabled so it demonstrates coverage + gaps on first load. */
 function directorLevel(): OrgChart {
+  const pws = (...refs: string[]): NodeRef[] => refs.map((ref) => ({ kind: 'PWS' as const, ref }))
+  const cdrl = (...refs: string[]): NodeRef[] => refs.map((ref) => ({ kind: 'CDRL' as const, ref }))
+
   const missionDirectors: OrgNode[] = [
     node({
       title: 'Modernization Director',
       badges: ['keyGray'],
       width: 210,
       bullets: ['Capital Improvement', 'Infrastructure Improvement', 'Surge Project Support'],
+      refs: pws('3.8'),
       details: [
         { label: 'PWS:', text: '3.8' },
         { label: 'Deliverables:', text: 'A047-A049, A051-A054' },
@@ -100,6 +111,7 @@ function directorLevel(): OrgChart {
       badges: ['keyGray'],
       width: 230,
       bullets: ['Turbine Engine', 'Wind Tunnel & Aerodynamics', 'Space & Missile', 'Hypersonics'],
+      refs: [...pws('3.1', '3.2', '3.3', '3.21'), ...cdrl('A003')],
       details: [
         { label: 'PWS:', text: '3.1-3.3, 3.19.23, 3.19.24, 3.21' },
         { label: 'Deliverables:', text: 'A003-A007, A010, A021' },
@@ -111,6 +123,7 @@ function directorLevel(): OrgChart {
       badges: ['keyGray'],
       width: 240,
       bullets: ['ID&C', 'TMDE', 'Digital Modernization', 'Test Technology / Design Engineering'],
+      refs: pws('3.6', '3.7', '3.10'),
       details: [
         { label: 'PWS:', text: '3.1.9-3.1.12, 3.3.3, 3.6, 3.7, 3.10' },
         { label: 'Deliverables:', text: 'A009, A022, A027, A032-A046' },
@@ -122,6 +135,7 @@ function directorLevel(): OrgChart {
       badges: ['keyGray'],
       width: 220,
       bullets: ['Predictive Maintenance', 'Plant / Test Cell Support', 'Utilities / Base Support'],
+      refs: [...pws('3.5', '3.9', '3.11'), ...cdrl('A050')],
       details: [
         { label: 'PWS:', text: '3.3.11, 3.5, 3.9, 3.11-3.13' },
         { label: 'Deliverables:', text: 'A018, A022-A031, A050' },
@@ -137,6 +151,7 @@ function directorLevel(): OrgChart {
     photo: true,
     badges: ['keyGold'],
     width: 330,
+    refs: pws('3.4', '3.20'),
     details: [
       { label: 'PWS:', text: '3.4, 3.18.1, 3.18.4, 3.18.5, 3.20' },
       { label: 'Deliverables:', text: 'A008, A019-A021, A109, A113' },
@@ -148,6 +163,7 @@ function directorLevel(): OrgChart {
         badges: ['keyGray'],
         width: 210,
         bullets: ['Finance; Business Systems', 'Logistics; Procurement', 'Public Affairs'],
+        refs: pws('2.2', '2.3', '3.15'),
         details: [
           { label: 'PWS:', text: '2.2, 2.3, 3.3.8, 3.15-3.17' },
           { label: 'Deliverables:', text: 'A076-A087, A115-A116' },
@@ -159,6 +175,7 @@ function directorLevel(): OrgChart {
         badges: ['keyGray'],
         width: 200,
         bullets: ['Hiring / Recruiting; HR', 'Labor Relations; Training'],
+        refs: pws('2.4'),
         details: [
           { label: 'PWS:', text: '2.4, 3.19.4' },
           { label: 'Deliverables:', text: 'A001-A002, A092' },
@@ -167,9 +184,41 @@ function directorLevel(): OrgChart {
     ],
   })
 
+  // Authoritative register. Most paragraphs have an owner above; a handful are
+  // intentionally unowned so the overlay shows real coverage gaps.
+  const requirements: Requirement[] = [
+    req('PWS', '2.1', 'Program management'),
+    req('PWS', '2.2', 'Business systems & finance'),
+    req('PWS', '2.3', 'Logistics & procurement'),
+    req('PWS', '2.4', 'Talent management'),
+    req('PWS', '3.1', 'Turbine engine test'),
+    req('PWS', '3.2', 'Wind tunnel & aerodynamics test'),
+    req('PWS', '3.3', 'Space & missile test'),
+    req('PWS', '3.4', 'Program integration'),
+    req('PWS', '3.5', 'Plant & test-cell maintenance'),
+    req('PWS', '3.6', 'Instrumentation, data & control'),
+    req('PWS', '3.7', 'Test technology & design engineering'),
+    req('PWS', '3.8', 'Modernization & capital improvement'),
+    req('PWS', '3.9', 'Predictive maintenance'),
+    req('PWS', '3.10', 'Digital modernization'),
+    req('PWS', '3.11', 'Utilities & base support'),
+    req('PWS', '3.12', 'Base civil engineering support'),
+    req('PWS', '3.13', 'Energy & utilities management'),
+    req('PWS', '3.14', 'Quality management'),
+    req('PWS', '3.15', 'Public affairs'),
+    req('PWS', '3.16', 'Property & asset accountability'),
+    req('PWS', '3.20', 'Configuration & data management'),
+    req('PWS', '3.21', 'Hypersonics test'),
+    req('PWS', '3.24', 'Safety & health'),
+    req('PWS', '3.25', 'Environmental compliance'),
+    req('CDRL', 'A003', 'Monthly test report'),
+    req('CDRL', 'A050', 'Facilities condition report'),
+    req('CDRL', 'A999', 'Annual staffing plan'),
+  ]
+
   const chart: OrgChart = {
     version: 1,
-    meta: { title: 'Program Leadership Organization', showTitle: true },
+    meta: { title: 'Program Leadership Organization', showTitle: true, showComplianceOverlay: true },
     roots: [
       node({
         title: 'General Manager',
@@ -178,6 +227,7 @@ function directorLevel(): OrgChart {
         photo: true,
         badges: ['keyGold'],
         width: 250,
+        refs: pws('2.1'),
         details: [
           { label: 'PWS:', text: '2.1' },
           { label: 'Interface:', text: 'Customer CO, COR, CC' },
@@ -189,6 +239,7 @@ function directorLevel(): OrgChart {
             badges: ['keyGold'],
             width: 250,
             bullets: ['Mission Assurance / Performance Mgmt', 'Health, Safety, Environmental', 'Quality'],
+            refs: pws('3.14', '3.24', '3.25'),
             details: [
               { label: 'PWS:', text: '3.14, 3.18.6, 3.19.1, 3.24, 3.25' },
               { label: 'Interface:', text: 'Customer SE' },
@@ -212,6 +263,7 @@ function directorLevel(): OrgChart {
       { id: uid('l'), marker: 'keyGray', label: 'Company Designated' },
       { id: uid('l'), marker: 'green', label: 'Mission Focus' },
     ],
+    compliance: { requirements },
   }
   return chart
 }

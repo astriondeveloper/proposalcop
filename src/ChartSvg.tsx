@@ -1,10 +1,17 @@
 import { memo } from 'react'
 import type { JSX, PointerEvent as ReactPointerEvent } from 'react'
 import { textWidth } from './layout'
-import type { Layout, PlacedNode } from './layout'
+import type { ComplianceOverlay, Layout, PlacedNode } from './layout'
+import { REF_KIND_LABEL } from './compliance'
 import { edgeArrow } from './model'
 import type { BadgeType, LegendMarker } from './model'
 import { brand, metrics as M, readableText, variantFill, zoneFill } from './theme'
+
+/* Compliance overlay colors (brand Refraction / Twilight), inlined so the
+ * exported SVG stays self-contained. */
+const COMPLY_OK = '#1ED872'
+const COMPLY_BAD = '#FC5442'
+const COMPLY_TRACK = '#F3D6D1'
 
 /*
  * Pure SVG renderer. Everything is drawn with inline attributes (no CSS
@@ -70,14 +77,47 @@ function PhotoPlaceholder({ x, y }: { x: number; y: number }) {
   )
 }
 
+/** Bottom-right corner status stamp shown when the compliance overlay is on and
+ *  the box carries references: green check = every reference traces to the
+ *  register; red "!" = at least one reference is not registered. */
+function ComplianceBadge({ p, status }: { p: PlacedNode; status: 'ok' | 'orphan' }) {
+  const cx = p.x + p.w - 11
+  const cy = p.y + p.totalH - 11
+  const color = status === 'ok' ? COMPLY_OK : COMPLY_BAD
+  const refs = (p.node.refs ?? []).map((r) => `${REF_KIND_LABEL[r.kind]} ${r.ref}`).join(', ')
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <title>{status === 'ok' ? `References traced: ${refs}` : `Reference not in register: ${refs}`}</title>
+      <circle cx={cx} cy={cy} r={8.5} fill={color} stroke={brand.white} strokeWidth={1.5} />
+      {status === 'ok' ? (
+        <path
+          d={`M ${cx - 3.6} ${cy + 0.2} l 2.4 2.5 l 4.6 -5`}
+          fill="none"
+          stroke={brand.white}
+          strokeWidth={1.7}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ) : (
+        <g stroke={brand.white} strokeWidth={1.7} strokeLinecap="round">
+          <line x1={cx} y1={cy - 3.6} x2={cx} y2={cy + 1.4} />
+          <line x1={cx} y1={cy + 3.8} x2={cx} y2={cy + 4} />
+        </g>
+      )}
+    </g>
+  )
+}
+
 function NodeBox({
   p,
   selected,
+  compliance,
   onSelect,
   onPointerDown,
 }: {
   p: PlacedNode
   selected: boolean
+  compliance?: 'ok' | 'orphan' | null
   onSelect?: (id: string) => void
   onPointerDown?: (id: string, e: ReactPointerEvent) => void
 }) {
@@ -230,6 +270,7 @@ function NodeBox({
       {titleEls}
       {extras}
       {badgeGlyphs(p)}
+      {compliance && <ComplianceBadge p={p} status={compliance} />}
       {selected && (
         <rect
           data-ui="selection"
@@ -288,8 +329,78 @@ function LegendMarkerGlyph({ marker, x, y }: { marker: LegendMarker; x: number; 
   }
 }
 
+/** Trim a string with an ellipsis so its rendered width fits `maxW`. */
+function truncate(s: string, size: number, maxW: number): string {
+  if (textWidth(s, size) <= maxW) return s
+  let out = s
+  while (out.length > 1 && textWidth(`${out}…`, size) > maxW) out = out.slice(0, -1)
+  return `${out}…`
+}
+
+/** Coverage + gaps panel, drawn as self-contained SVG under the chart. */
+function CompliancePanel({ overlay }: { overlay: ComplianceOverlay }) {
+  const { panel: r, coverage, gaps, gapsMore } = overlay
+  const pad = 12
+  const innerW = r.w - pad * 2
+  const barY = r.y + 46
+  const covW = Math.round((innerW * coverage.pct) / 100)
+  let gy = barY + 26
+  return (
+    <g fontFamily={brand.fontFamily}>
+      <rect x={r.x} y={r.y} width={r.w} height={r.h} rx={6} fill={brand.white} stroke="#BDBDBD" strokeWidth={1} />
+      <text x={r.x + pad} y={r.y + 22} fontSize={13} fontWeight={700} fill={brand.heading}>
+        {`Compliance Coverage — ${coverage.pct}%`}
+      </text>
+      <text x={r.x + pad} y={r.y + 38} fontSize={11} fill={brand.detailText}>
+        {`${coverage.covered} of ${coverage.total} requirements covered`}
+      </text>
+      <rect x={r.x + pad} y={barY} width={innerW} height={7} rx={3.5} fill={COMPLY_TRACK} />
+      {covW > 0 && <rect x={r.x + pad} y={barY} width={covW} height={7} rx={3.5} fill={COMPLY_OK} />}
+      {gaps.length ? (
+        <>
+          <text x={r.x + pad} y={gy + 8} fontSize={11} fontWeight={700} fill={COMPLY_BAD}>
+            {`Gaps (${gaps.length + gapsMore})`}
+          </text>
+          {gaps.map((g, i) => {
+            const yy = gy + 24 + i * 18
+            const label = `${REF_KIND_LABEL[g.kind]} ${g.ref}${g.title ? ` — ${g.title}` : ''}`
+            return (
+              <g key={`${g.kind}-${g.ref}-${i}`}>
+                <rect x={r.x + pad} y={yy - 8} width={7} height={7} rx={1.5} fill={COMPLY_BAD} />
+                <text x={r.x + pad + 13} y={yy} fontSize={11} fill={brand.detailText}>
+                  {truncate(label, 11, innerW - 15)}
+                </text>
+              </g>
+            )
+          })}
+          {gapsMore > 0 && (
+            <text
+              x={r.x + pad + 13}
+              y={gy + 24 + gaps.length * 18}
+              fontSize={10.5}
+              fontStyle="italic"
+              fill="#8b86a0"
+            >
+              {`+${gapsMore} more`}
+            </text>
+          )}
+        </>
+      ) : (
+        <text x={r.x + pad} y={gy + 8} fontSize={11} fontWeight={700} fill={COMPLY_OK}>
+          No gaps — every requirement is owned
+        </text>
+      )}
+    </g>
+  )
+}
+
 export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, ariaLabel }: Props) {
-  const { placed, connectors, zones, comms, legend, title, width, height } = layout
+  const { placed, connectors, zones, comms, legend, title, compliance, width, height } = layout
+  const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
+  const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {
+    if (!compliance || !(p.node.refs?.length)) return null
+    return orphanSet!.has(p.node.id) ? 'orphan' : 'ok'
+  }
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -423,10 +534,13 @@ export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, aria
           key={p.node.id}
           p={p}
           selected={p.node.id === selectedId}
+          compliance={statusFor(p)}
           onSelect={onSelect}
           onPointerDown={onNodePointerDown}
         />
       ))}
+
+      {compliance && <CompliancePanel overlay={compliance} />}
 
       {legend && (
         <g>

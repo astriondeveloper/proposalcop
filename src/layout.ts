@@ -1,5 +1,6 @@
-import type { CommLink, Direction, Group, LegendItem, OrgChart, OrgNode } from './model'
+import type { CommLink, Direction, Group, LegendItem, OrgChart, OrgNode, RefKind } from './model'
 import { visit } from './model'
+import { computeCompliance, REF_KIND_LABEL } from './compliance'
 import { metrics as M } from './theme'
 
 /*
@@ -61,6 +62,25 @@ export interface LegendLayout {
   items: LegendItem[]
 }
 
+/** A gap shown in the compliance panel (an unowned requirement). */
+export interface OverlayGap {
+  kind: RefKind
+  ref: string
+  title?: string
+}
+
+/** On-chart compliance overlay: per-box status + a coverage/gaps panel.
+ *  Present only when meta.showComplianceOverlay is on and a register exists. */
+export interface ComplianceOverlay {
+  coverage: { covered: number; total: number; pct: number }
+  gaps: OverlayGap[]
+  /** How many gaps beyond those in {@link gaps} exist (panel is capped). */
+  gapsMore: number
+  /** Ids of boxes carrying at least one reference absent from the register. */
+  orphanNodeIds: string[]
+  panel: Rect
+}
+
 export interface Layout {
   placed: PlacedNode[]
   /** Reporting-line connector paths. */
@@ -69,6 +89,7 @@ export interface Layout {
   comms: CommPath[]
   legend: LegendLayout | null
   title: { text: string; x: number; y: number; w: number } | null
+  compliance: ComplianceOverlay | null
   width: number
   height: number
 }
@@ -348,6 +369,12 @@ function routeComm(a: Rect, b: Rect): string {
 const LEGEND_ITEM_H = 24
 const LEGEND_PAD = 12
 
+/* Compliance overlay panel metrics. */
+const CPANEL_PAD = 12
+const CPANEL_HEADER_H = 52
+const CPANEL_GAP_H = 18
+const CPANEL_MAX_GAPS = 12
+
 // textWidth() is deliberately generous so boxes never clip their text; that
 // padding is invisible inside a box, but the headline accent bar sits directly
 // under the rendered title, so scale the estimate to track the rendered glyph
@@ -437,12 +464,51 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
         }
       : null
 
+  // On-chart compliance overlay (opt-in): a coverage/gaps panel placed under
+  // the content so it grows the canvas like the legend, plus the node ids the
+  // renderer badges. Only built when enabled and a register exists.
+  let compliance: ComplianceOverlay | null = null
+  if (chart.meta.showComplianceOverlay && (chart.compliance?.requirements?.length ?? 0) > 0) {
+    const report = computeCompliance(chart)
+    const allGaps = report.rows.filter((r) => r.status === 'gap').map((r) => r.requirement)
+    const gaps: OverlayGap[] = allGaps
+      .slice(0, CPANEL_MAX_GAPS)
+      .map((r) => ({ kind: r.kind, ref: r.ref, title: r.title }))
+    const gapsMore = allGaps.length - gaps.length
+    const orphanNodeIds = [...new Set(report.orphans.map((o) => o.nodeId))]
+
+    const headerLine = `Compliance coverage — ${report.coverage.pct}%`
+    const countLine = `${report.coverage.covered} of ${report.coverage.total} requirements covered`
+    const gapsTitle = gaps.length ? `Gaps (${allGaps.length})` : 'No gaps — every requirement is owned'
+    const gapLine = (g: OverlayGap) => `${REF_KIND_LABEL[g.kind]} ${g.ref}${g.title ? ` — ${g.title}` : ''}`
+    // Gap lines are bullet-indented (~15px) in the renderer, so budget for it
+    // here or the longest gap title would be truncated inside its own panel.
+    const widest = Math.max(
+      textWidth(headerLine, 13, true),
+      textWidth(countLine, 11),
+      textWidth(gapsTitle, 11, true),
+      ...gaps.map((g) => textWidth(gapLine(g), 11) + 15),
+    )
+    const w = Math.min(440, Math.max(240, widest + CPANEL_PAD * 2))
+    const gapsBlockH = gaps.length ? 22 + gaps.length * CPANEL_GAP_H + (gapsMore > 0 ? 16 : 0) : 20
+    const h = CPANEL_PAD * 2 + CPANEL_HEADER_H + gapsBlockH
+    compliance = {
+      coverage: report.coverage,
+      gaps,
+      gapsMore,
+      orphanNodeIds,
+      panel: { x: M.canvasPad, y: maxY + 26, w, h },
+    }
+  }
+
   const contentRight = legend ? legend.x + legend.w : maxX
   const titleRight = title ? title.x + title.w : 0
-  const width = Math.max(contentRight, titleRight) + M.canvasPad
-  const height = Math.max(maxY, legend ? legend.y + legend.h : 0) + M.canvasPad
+  const complianceRight = compliance ? compliance.panel.x + compliance.panel.w : 0
+  const complianceBottom = compliance ? compliance.panel.y + compliance.panel.h : 0
+  const width = Math.max(contentRight, titleRight, complianceRight) + M.canvasPad
+  const height = Math.max(maxY, legend ? legend.y + legend.h : 0, complianceBottom) + M.canvasPad
 
-  return { placed, connectors, zones, comms, legend, title, width, height }
+  return { placed, connectors, zones, comms, legend, title, compliance, width, height }
 }
 
 /* --------------------------------------------------- manual overrides */
