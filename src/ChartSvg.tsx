@@ -394,6 +394,27 @@ function CompliancePanel({ overlay }: { overlay: ComplianceOverlay }) {
   )
 }
 
+/** Action caption beneath the graphic. Rendered as part of the SVG, so it
+ *  travels into every export. */
+function CaptionText({ caption }: { caption: NonNullable<Layout['caption']> }) {
+  return (
+    <g>
+      {caption.lines.map((ln, i) => (
+        <text
+          key={i}
+          x={caption.x}
+          y={caption.y + (i + 1) * 17 - 4}
+          fontSize={12}
+          fill={brand.detailText}
+          fontFamily={brand.fontFamily}
+        >
+          {ln}
+        </text>
+      ))}
+    </g>
+  )
+}
+
 /** Transition-schedule (Gantt) renderer. Self-contained SVG: time axis with
  *  quarter-span ticks, dashed phase markers, task bars, and milestone diamonds. */
 function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
@@ -422,6 +443,33 @@ function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string
         </linearGradient>
       </defs>
       <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+
+      {/* Workstream swimlane bands (behind everything). */}
+      {tl.bands.map((band, i) => (
+        <g key={`band-${i}`}>
+          <rect
+            x={pad - 6}
+            y={band.y}
+            width={plotRight - pad + 12}
+            height={band.h}
+            rx={4}
+            fill={band.style === 'dashed' ? '#F1EFFA' : zoneFill[band.style]}
+          />
+          {band.label && (
+            <text
+              x={pad}
+              y={band.y + 12}
+              fontSize={9.5}
+              fontWeight={700}
+              letterSpacing="0.4"
+              fill={brand.heading}
+              fontFamily={brand.fontFamily}
+            >
+              {band.label.toUpperCase()}
+            </text>
+          )}
+        </g>
+      ))}
 
       {/* Quarter-span gridlines + tick labels. */}
       {tl.ticks.map((t, i) => (
@@ -477,13 +525,14 @@ function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string
           <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
         </g>
       )}
+      {layout.caption && <CaptionText caption={layout.caption} />}
     </svg>
   )
 }
 
 export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, ariaLabel }: Props) {
   if (layout.timeline) return <TimelineSvg layout={layout} ariaLabel={ariaLabel} />
-  const { placed, connectors, zones, comms, legend, title, compliance, width, height } = layout
+  const { placed, connectors, zones, comms, legend, title, compliance, caption, width, height } = layout
   const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
   const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {
     if (!compliance || !(p.node.refs?.length)) return null
@@ -690,6 +739,7 @@ export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, aria
           <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
         </g>
       )}
+      {caption && <CaptionText caption={caption} />}
     </svg>
   )
 }

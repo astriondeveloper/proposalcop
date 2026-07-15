@@ -95,6 +95,14 @@ export interface TimelineBar {
   text: string
 }
 
+/** A workstream swimlane band behind the schedule rows, from a group. */
+export interface TimelineBand {
+  label: string
+  y: number
+  h: number
+  style: Group['style']
+}
+
 /** Geometry for the 'timeline' layout: a Gantt-style schedule. */
 export interface TimelineLayout {
   gutter: number
@@ -105,10 +113,20 @@ export interface TimelineLayout {
   rowH: number
   rowGap: number
   bars: TimelineBar[]
+  bands: TimelineBand[]
   ticks: { x: number; label: string }[]
   phases: { label: string; x: number }[]
   unit: 'day' | 'week' | 'month'
   span: number
+}
+
+/** Wrapped action caption beneath the graphic (carried into exports). */
+export interface CaptionLayout {
+  lines: string[]
+  x: number
+  y: number
+  w: number
+  h: number
 }
 
 export interface Layout {
@@ -122,8 +140,23 @@ export interface Layout {
   compliance: ComplianceOverlay | null
   /** Transition-schedule geometry when the 'timeline' layout is active. */
   timeline: TimelineLayout | null
+  caption: CaptionLayout | null
   width: number
   height: number
+}
+
+const CAPTION_SIZE = 12
+const CAPTION_LH = 17
+const CAPTION_MAXW = 860
+
+/** Lay out the chart's action caption below the content, wrapped to the content
+ *  width (bounded). Returns null when there is no caption. */
+function captionLayout(chart: OrgChart, contentW: number, bottomY: number): CaptionLayout | null {
+  const text = chart.meta.caption?.trim()
+  if (!text) return null
+  const w = Math.max(240, Math.min(CAPTION_MAXW, contentW))
+  const lines = wrapText(text, CAPTION_SIZE, w)
+  return { lines, x: M.canvasPad, y: bottomY + 18, w, h: lines.length * CAPTION_LH }
 }
 
 /* ---------------------------------------------------------- text metrics */
@@ -537,10 +570,13 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
   const titleRight = title ? title.x + title.w : 0
   const complianceRight = compliance ? compliance.panel.x + compliance.panel.w : 0
   const complianceBottom = compliance ? compliance.panel.y + compliance.panel.h : 0
-  const width = Math.max(contentRight, titleRight, complianceRight) + M.canvasPad
-  const height = Math.max(maxY, legend ? legend.y + legend.h : 0, complianceBottom) + M.canvasPad
+  const rightEdge = Math.max(contentRight, titleRight, complianceRight)
+  const contentBottom = Math.max(maxY, legend ? legend.y + legend.h : 0, complianceBottom)
+  const caption = captionLayout(chart, rightEdge - M.canvasPad, contentBottom)
+  const width = Math.max(rightEdge, caption ? caption.x + caption.w : 0) + M.canvasPad
+  const height = (caption ? caption.y + caption.h : contentBottom) + M.canvasPad
 
-  return { placed, connectors, zones, comms, legend, title, compliance, timeline: null, width, height }
+  return { placed, connectors, zones, comms, legend, title, compliance, timeline: null, caption, width, height }
 }
 
 /* --------------------------------------------------- manual overrides */
@@ -1110,6 +1146,33 @@ function layoutTimeline(chart: OrgChart): Layout {
     .filter((p) => p.at >= 0 && p.at <= span)
     .map((p) => ({ label: p.label, x: at(p.at) }))
 
+  // Workstream swimlane bands from group membership (a group owns its members'
+  // subtrees), spanning the y-range of its rows.
+  const bands: TimelineBand[] = []
+  if (chart.groups.length) {
+    const nodeById = new Map<string, OrgNode>()
+    visit(chart.roots, (n) => nodeById.set(n.id, n))
+    const barById = new Map(bars.map((b) => [b.node.id, b]))
+    for (const g of chart.groups) {
+      const ids = new Set<string>()
+      for (const mid of g.memberIds) {
+        const mn = nodeById.get(mid)
+        if (mn) subtreeIds(mn).forEach((i) => ids.add(i))
+      }
+      let y1 = Infinity
+      let y2 = -Infinity
+      for (const id of ids) {
+        const b = barById.get(id)
+        if (b) {
+          y1 = Math.min(y1, b.y)
+          y2 = Math.max(y2, b.y + b.rowH)
+        }
+      }
+      if (y1 === Infinity) continue
+      bands.push({ label: g.label ?? '', y: y1 - 4, h: y2 - y1 + 8, style: g.style })
+    }
+  }
+
   const abbr = unit === 'day' ? 'D' : unit === 'week' ? 'W' : 'M'
   const tickUnits = [...new Set([0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(span * f)))]
   const ticks = tickUnits.map((u) => ({ x: at(u), label: `${abbr}${u}` }))
@@ -1134,11 +1197,13 @@ function layoutTimeline(chart: OrgChart): Layout {
     rowH: TL_ROW_H,
     rowGap: TL_ROW_GAP,
     bars,
+    bands,
     ticks,
     phases,
     unit,
     span,
   }
+  const caption = captionLayout(chart, plotX + plotW - M.canvasPad, bottom)
   return {
     placed: [],
     connectors: [],
@@ -1148,8 +1213,9 @@ function layoutTimeline(chart: OrgChart): Layout {
     title,
     compliance: null,
     timeline,
-    width: plotX + plotW + M.canvasPad,
-    height: bottom + M.canvasPad,
+    caption,
+    width: Math.max(plotX + plotW, caption ? caption.x + caption.w : 0) + M.canvasPad,
+    height: (caption ? caption.y + caption.h : bottom) + M.canvasPad,
   }
 }
 

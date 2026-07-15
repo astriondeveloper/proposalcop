@@ -476,6 +476,14 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
         />
         Show WBS outline numbers
       </label>
+      <label>Figure caption (shown under the chart, included in exports)
+        <textarea
+          rows={2}
+          value={chart.meta.caption ?? ''}
+          placeholder="e.g. A single accountable lead on every PWS task cuts handoffs and retires transition risk by day 30."
+          onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, caption: e.target.value || undefined } })}
+        />
+      </label>
       <label>Layout
         <select
           value={chart.meta.layout ?? 'tree'}
@@ -585,10 +593,25 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           {workshare.entries.map((e) => (
             <div key={e.id} className="ws-row">
               <button className="link" onClick={() => onSelect(e.id)}>{e.title}</button>
+              {e.category !== 'Other' && <span className="ws-cat">{e.category}</span>}
               <span className="ws-pct">{e.percent}%</span>
             </div>
           ))}
-          <p className="hint">Summed from each box's "Workshare" detail row.</p>
+          {workshare.smallBusinessTotal > 0 && (
+            <>
+              <div className="phase-head">Small-business participation — {workshare.smallBusinessTotal}%</div>
+              <div className="cov-kinds">
+                {workshare.byCategory
+                  .filter((c) => c.category !== 'Other')
+                  .map((c) => (
+                    <span key={c.category} className="cov-kind">
+                      {c.category} <b>{c.percent}%</b>
+                    </span>
+                  ))}
+              </div>
+            </>
+          )}
+          <p className="hint">Summed from each box's "Workshare" and "Category" detail rows.</p>
         </fieldset>
       )}
 

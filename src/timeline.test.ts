@@ -65,4 +65,10 @@ describe('layoutTimeline', () => {
     // Nested tasks are indented (depth 1).
     expect(tl.bars.some((b) => b.depth === 1)).toBe(true)
   })
+
+  it('builds workstream swimlane bands from groups', () => {
+    const tl = layoutChart(templates.find((t) => t.key === 'transition')!.build()).timeline!
+    expect(tl.bands.map((b) => b.label)).toEqual(['Stand-up', 'Transition', 'Operations'])
+    expect(tl.bands.every((b) => b.h > 0)).toBe(true)
+  })
 })

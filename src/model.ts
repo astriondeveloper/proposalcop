@@ -184,6 +184,8 @@ export interface OrgChart {
     /** Prefix every visible box with a computed WBS outline number
      *  (1, 1.1, 1.1.1 ...). A view concern only — stored titles stay clean. */
     showWbsNumbers?: boolean
+    /** Action caption rendered beneath the graphic and carried into exports. */
+    caption?: string
   }
   /** Independent trees/columns laid out left to right. */
   roots: OrgNode[]
@@ -511,6 +513,7 @@ export function normalizeChart(input: unknown): OrgChart {
       ...(layoutOk ? { layout } : {}),
       ...(c.meta?.showComplianceOverlay === true ? { showComplianceOverlay: true } : {}),
       ...(c.meta?.showWbsNumbers === true ? { showWbsNumbers: true } : {}),
+      ...(typeof c.meta?.caption === 'string' && c.meta.caption.trim() ? { caption: c.meta.caption } : {}),
     },
     roots: c.roots as OrgNode[],
     groups: Array.isArray(c.groups) ? c.groups : [],

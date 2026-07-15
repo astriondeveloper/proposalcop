@@ -1109,6 +1109,15 @@ body,
   color: var(--text);
 }
 
+.ws-cat {
+  font-size: 0.72em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--r-full);
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0.01ms !important;

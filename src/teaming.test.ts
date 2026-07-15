@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parsePercent, workshareRollup } from './teaming'
+import { parsePercent, parseSocio, workshareRollup } from './teaming'
 import type { OrgChart, OrgNode } from './model'
 
 const node = (id: string, details?: OrgNode['details'], children?: OrgNode[]): OrgNode => ({
@@ -73,5 +73,35 @@ describe('workshareRollup', () => {
       ]),
     ])
     expect(workshareRollup(chart).total).toBe(100)
+  })
+})
+
+describe('parseSocio', () => {
+  it('maps common set-aside strings to canonical categories', () => {
+    expect(parseSocio('8(a)')).toBe('8(a)')
+    expect(parseSocio('SDVOSB')).toBe('SDVOSB')
+    expect(parseSocio('Woman-Owned Small Business')).toBe('WOSB')
+    expect(parseSocio('HUBZone')).toBe('HUBZone')
+    expect(parseSocio('Small Business')).toBe('Small Business')
+    expect(parseSocio('Large Business')).toBe('Other')
+  })
+})
+
+describe('workshareRollup socioeconomic breakdown', () => {
+  it('categorizes workshare and totals small-business participation', () => {
+    const chart = chartOf([
+      node('Prime', [{ label: 'Workshare:', text: '60%' }, { label: 'Category:', text: 'Large Business' }]),
+      node('B', [{ label: 'Workshare:', text: '15%' }, { label: 'Set-aside:', text: 'SDVOSB' }]),
+      node('C', [{ label: 'Workshare:', text: '25%' }, { label: 'Category:', text: '8(a)' }]),
+    ])
+    const r = workshareRollup(chart)
+    expect(r.total).toBe(100)
+    expect(r.smallBusinessTotal).toBe(40)
+    expect(r.byCategory).toEqual([
+      { category: '8(a)', percent: 25 },
+      { category: 'SDVOSB', percent: 15 },
+      { category: 'Other', percent: 60 },
+    ])
+    expect(r.entries.find((e) => e.id === 'B')?.category).toBe('SDVOSB')
   })
 })

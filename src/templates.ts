@@ -693,14 +693,15 @@ function wbs(): OrgChart {
  *  box carrying its role and workshare %. Color separates prime, large subs,
  *  and small businesses; the legend explains the coding. */
 function teaming(): OrgChart {
-  const sub = (title: string, role: string, workshare: string, smallBiz: boolean): OrgNode =>
+  const sub = (title: string, role: string, workshare: string, category: string): OrgNode =>
     node({
       title,
-      variant: smallBiz ? 'accent' : 'secondary',
+      variant: category === 'Large Business' ? 'secondary' : 'accent',
       width: 200,
       details: [
         { label: 'Role:', text: role },
         { label: 'Workshare:', text: workshare },
+        { label: 'Category:', text: category },
       ],
     })
 
@@ -712,12 +713,13 @@ function teaming(): OrgChart {
     details: [
       { label: 'Role:', text: 'Prime / Systems Integration' },
       { label: 'Workshare:', text: '55%' },
+      { label: 'Category:', text: 'Large Business' },
     ],
     children: [
-      sub('Subcontractor A', 'Software & Data', '20%', false),
-      sub('Subcontractor B', 'Cyber & SIGINT', '12%', true),
-      sub('Subcontractor C', 'Logistics & Training', '8%', true),
-      sub('Subcontractor D', 'Specialty Engineering', '5%', true),
+      sub('Subcontractor A', 'Software & Data', '20%', 'Large Business'),
+      sub('Subcontractor B', 'Cyber & SIGINT', '12%', 'SDVOSB'),
+      sub('Subcontractor C', 'Logistics & Training', '8%', 'WOSB'),
+      sub('Subcontractor D', 'Specialty Engineering', '5%', 'HUBZone'),
     ],
   })
 
@@ -749,9 +751,27 @@ function transitionSchedule(): OrgChart {
   const ms = (title: string, at: number): OrgNode =>
     node({ title, variant: 'accent', start: at, milestone: true })
 
+  const mobilization = task('Mobilization', 0, 30, 'primary', [
+    task('Key Personnel Onboarding', 0, 20, 'tertiary'),
+    task('Facilities & IT Setup', 5, 25, 'tertiary'),
+    task('Security Clearances', 0, 45, 'tertiary'),
+  ])
+  const knowledge = task('Knowledge Transfer', 10, 45, 'primary', [
+    task('Incumbent Shadowing', 10, 25, 'tertiary'),
+    task('Process Documentation', 20, 30, 'tertiary'),
+  ])
+  const cutover = task('Systems Cutover', 45, 25, 'primary')
+  const steady = task('Steady-State Operations', 90, 30, 'secondary')
+
   return {
     version: 1,
-    meta: { title: '90-Day Transition & Phase-In', showTitle: true, layout: 'timeline' },
+    meta: {
+      title: '90-Day Transition & Phase-In',
+      showTitle: true,
+      layout: 'timeline',
+      caption:
+        'A phased 90-day transition retires risk early: key personnel and clearances land first, knowledge transfer overlaps incumbent operations, and systems cut over before full operational capability at day 90.',
+    },
     schedule: {
       unit: 'day',
       span: 120,
@@ -763,20 +783,17 @@ function transitionSchedule(): OrgChart {
     },
     roots: [
       ms('Contract Award', 0),
-      task('Mobilization', 0, 30, 'primary', [
-        task('Key Personnel Onboarding', 0, 20, 'tertiary'),
-        task('Facilities & IT Setup', 5, 25, 'tertiary'),
-        task('Security Clearances', 0, 45, 'tertiary'),
-      ]),
-      task('Knowledge Transfer', 10, 45, 'primary', [
-        task('Incumbent Shadowing', 10, 25, 'tertiary'),
-        task('Process Documentation', 20, 30, 'tertiary'),
-      ]),
-      task('Systems Cutover', 45, 25, 'primary'),
+      mobilization,
+      knowledge,
+      cutover,
       ms('Full Operational Capability', 90),
-      task('Steady-State Operations', 90, 30, 'secondary'),
+      steady,
     ],
-    groups: [],
+    groups: [
+      { id: uid('g'), label: 'Stand-up', style: 'green', memberIds: [mobilization.id] },
+      { id: uid('g'), label: 'Transition', style: 'blue', memberIds: [knowledge.id, cutover.id] },
+      { id: uid('g'), label: 'Operations', style: 'orange', memberIds: [steady.id] },
+    ],
     comms: [],
     legend: [],
   }
