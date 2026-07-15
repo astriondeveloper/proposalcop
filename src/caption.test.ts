@@ -38,3 +38,18 @@ describe('action caption', () => {
     expect(layoutChart(c).caption).not.toBeNull()
   })
 })
+
+describe('classification banner', () => {
+  it('normalizeChart keeps a non-empty banner and drops whitespace-only', () => {
+    const roots = [{ id: 'a', title: 'A', variant: 'primary' as const }]
+    expect(normalizeChart({ roots, meta: { title: 'T', banner: 'CUI' } }).meta.banner).toBe('CUI')
+    expect(normalizeChart({ roots, meta: { title: 'T', banner: '  ' } }).meta.banner).toBeUndefined()
+  })
+
+  it('layout carries the banner text', () => {
+    expect(layoutChart(base()).banner).toBeNull()
+    const c = base()
+    c.meta.banner = 'UNCLASSIFIED//FOUO'
+    expect(layoutChart(c).banner).toBe('UNCLASSIFIED//FOUO')
+  })
+})

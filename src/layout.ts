@@ -141,6 +141,8 @@ export interface Layout {
   /** Transition-schedule geometry when the 'timeline' layout is active. */
   timeline: TimelineLayout | null
   caption: CaptionLayout | null
+  /** Classification / CUI marking text, rendered as top + bottom banners. */
+  banner: string | null
   width: number
   height: number
 }
@@ -576,7 +578,20 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
   const width = Math.max(rightEdge, caption ? caption.x + caption.w : 0) + M.canvasPad
   const height = (caption ? caption.y + caption.h : contentBottom) + M.canvasPad
 
-  return { placed, connectors, zones, comms, legend, title, compliance, timeline: null, caption, width, height }
+  return {
+    placed,
+    connectors,
+    zones,
+    comms,
+    legend,
+    title,
+    compliance,
+    timeline: null,
+    caption,
+    banner: chart.meta.banner ?? null,
+    width,
+    height,
+  }
 }
 
 /* --------------------------------------------------- manual overrides */
@@ -1214,6 +1229,7 @@ function layoutTimeline(chart: OrgChart): Layout {
     compliance: null,
     timeline,
     caption,
+    banner: chart.meta.banner ?? null,
     width: Math.max(plotX + plotW, caption ? caption.x + caption.w : 0) + M.canvasPad,
     height: (caption ? caption.y + caption.h : bottom) + M.canvasPad,
   }

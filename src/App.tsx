@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react'
 import { ChartSvg } from './ChartSvg'
-import { exportJson, exportPng, exportSvg } from './export'
+import { exportJson, exportPng, exportSlidePng, exportSvg } from './export'
 import { exportPdf } from './pdf'
 import { exportPptx } from './pptx'
 import { layoutChart, previewDrag } from './layout'
@@ -653,6 +653,9 @@ export default function App() {
         </button>
         <button onClick={() => { const svg = getSvg(); if (svg) void exportPng(svg, chart.meta.title, 4) }}>
           PNG 4×
+        </button>
+        <button title="PNG sized to a 16:9 PowerPoint slide" onClick={() => { const svg = getSvg(); if (svg) void exportSlidePng(svg, chart.meta.title, '16:9') }}>
+          Slide 16:9
         </button>
         <button onClick={() => { const svg = getSvg(); if (svg) void exportPptx(svg, chart.meta.title) }}>
           PPTX

@@ -415,6 +415,50 @@ function CaptionText({ caption }: { caption: NonNullable<Layout['caption']> }) {
   )
 }
 
+/** Classification-marking color, keyed off the banner text. Unknown markings
+ *  fall back to a neutral bar. */
+function bannerColor(text: string): string {
+  const t = text.toLowerCase()
+  if (/top\s*secret/.test(t)) return '#FF8C00'
+  if (/secret/.test(t)) return '#C8102E'
+  if (/confidential/.test(t)) return '#0033A0'
+  if (/\bcui\b|controlled unclassified|fouo/.test(t)) return '#502B85'
+  if (/unclassified|\bunclass\b/.test(t)) return '#007A33'
+  return '#3A3A4E'
+}
+
+/** Top + bottom classification / CUI banners. Sit inside the canvas margins, so
+ *  no layout offset is needed, and render on top of everything. */
+function BannerBars({ text, width, height }: { text: string; width: number; height: number }) {
+  const bg = bannerColor(text)
+  const fg = readableText(bg)
+  const label = text.toUpperCase()
+  const h = 18
+  const bar = (y: number, key: string) => (
+    <g key={key}>
+      <rect x={0} y={y} width={width} height={h} fill={bg} />
+      <text
+        x={width / 2}
+        y={y + h / 2 + 3.6}
+        textAnchor="middle"
+        fontSize={11}
+        fontWeight={700}
+        letterSpacing="0.6"
+        fill={fg}
+        fontFamily={brand.fontFamily}
+      >
+        {label}
+      </text>
+    </g>
+  )
+  return (
+    <>
+      {bar(4, 'top')}
+      {bar(height - h - 4, 'bottom')}
+    </>
+  )
+}
+
 /** Transition-schedule (Gantt) renderer. Self-contained SVG: time axis with
  *  quarter-span ticks, dashed phase markers, task bars, and milestone diamonds. */
 function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
@@ -526,13 +570,14 @@ function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string
         </g>
       )}
       {layout.caption && <CaptionText caption={layout.caption} />}
+      {layout.banner && <BannerBars text={layout.banner} width={width} height={height} />}
     </svg>
   )
 }
 
 export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, ariaLabel }: Props) {
   if (layout.timeline) return <TimelineSvg layout={layout} ariaLabel={ariaLabel} />
-  const { placed, connectors, zones, comms, legend, title, compliance, caption, width, height } = layout
+  const { placed, connectors, zones, comms, legend, title, compliance, caption, banner, width, height } = layout
   const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
   const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {
     if (!compliance || !(p.node.refs?.length)) return null
@@ -740,6 +785,7 @@ export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, aria
         </g>
       )}
       {caption && <CaptionText caption={caption} />}
+      {banner && <BannerBars text={banner} width={width} height={height} />}
     </svg>
   )
 }

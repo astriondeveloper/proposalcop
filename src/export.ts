@@ -100,3 +100,48 @@ export function exportCsv(csv: string, title: string, suffix = 'compliance'): vo
     `${safeName(title)}-${suffix}.csv`,
   )
 }
+
+const SLIDE_DIMS = {
+  '16:9': { w: 1920, h: 1080 },
+  '4:3': { w: 1440, h: 1080 },
+} as const
+
+/** Export a PNG sized to a PowerPoint slide: the chart is scaled to fit with a
+ *  margin and centered on a white slide-shaped canvas, so it drops onto a slide
+ *  at the right aspect ratio without further resizing. */
+export function exportSlidePng(
+  svgEl: SVGSVGElement,
+  title: string,
+  ratio: keyof typeof SLIDE_DIMS = '16:9',
+): Promise<void> {
+  const dims = SLIDE_DIMS[ratio]
+  const margin = 72
+  const nativeW = svgEl.viewBox.baseVal.width || svgEl.clientWidth
+  const nativeH = svgEl.viewBox.baseVal.height || svgEl.clientHeight
+  const fit = Math.min((dims.w - margin * 2) / nativeW, (dims.h - margin * 2) / nativeH)
+  const scale = Math.max(0.1, Math.min(6, fit))
+  return svgToCanvas(svgEl, scale).then(
+    ({ canvas }) =>
+      new Promise((resolve, reject) => {
+        const slide = document.createElement('canvas')
+        slide.width = dims.w
+        slide.height = dims.h
+        const ctx = slide.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Canvas unavailable'))
+          return
+        }
+        ctx.fillStyle = '#FFFFFF'
+        ctx.fillRect(0, 0, dims.w, dims.h)
+        ctx.drawImage(canvas, Math.round((dims.w - canvas.width) / 2), Math.round((dims.h - canvas.height) / 2))
+        slide.toBlob((blob) => {
+          if (blob) {
+            download(blob, `${safeName(title)}-slide-${ratio.replace(':', 'x')}.png`)
+            resolve()
+          } else {
+            reject(new Error('PNG encoding failed'))
+          }
+        }, 'image/png')
+      }),
+  )
+}

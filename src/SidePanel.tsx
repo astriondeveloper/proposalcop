@@ -20,6 +20,7 @@ import {
   addRoot,
   addSibling,
   allNodes,
+  autoLegend,
   clone,
   deleteNode,
   edgeArrow,
@@ -484,6 +485,22 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, caption: e.target.value || undefined } })}
         />
       </label>
+      <label>Classification / CUI banner (top &amp; bottom, in exports)
+        <input
+          list="banner-presets"
+          value={chart.meta.banner ?? ''}
+          placeholder="e.g. CUI"
+          onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, banner: e.target.value || undefined } })}
+        />
+        <datalist id="banner-presets">
+          <option value="UNCLASSIFIED" />
+          <option value="UNCLASSIFIED//FOUO" />
+          <option value="CUI" />
+          <option value="CONFIDENTIAL" />
+          <option value="SECRET" />
+          <option value="TOP SECRET" />
+        </datalist>
+      </label>
       <label>Layout
         <select
           value={chart.meta.layout ?? 'tree'}
@@ -763,11 +780,22 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
             >×</button>
           </div>
         ))}
-        <button
-          onClick={() =>
-            onChange({ ...chart, legend: [...chart.legend, { id: uid('l'), marker: 'keyGold', label: 'RFP Required' }] })
-          }
-        >+ Legend item</button>
+        <div className="btn-row">
+          <button
+            onClick={() =>
+              onChange({ ...chart, legend: [...chart.legend, { id: uid('l'), marker: 'keyGold', label: 'RFP Required' }] })
+            }
+          >+ Legend item</button>
+          <button
+            className="sm"
+            title="Add legend entries for the box styles, badges, zones and edges used in this chart"
+            onClick={() => {
+              const have = new Set(chart.legend.map((l) => l.marker))
+              const additions = autoLegend(chart).filter((i) => !have.has(i.marker))
+              if (additions.length) onChange({ ...chart, legend: [...chart.legend, ...additions] })
+            }}
+          >Auto-add from chart</button>
+        </div>
       </fieldset>
 
       <fieldset>

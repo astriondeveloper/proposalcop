@@ -186,6 +186,9 @@ export interface OrgChart {
     showWbsNumbers?: boolean
     /** Action caption rendered beneath the graphic and carried into exports. */
     caption?: string
+    /** Classification / CUI marking rendered as top + bottom banners and carried
+     *  into exports (e.g. "CUI", "UNCLASSIFIED//FOUO"). */
+    banner?: string
   }
   /** Independent trees/columns laid out left to right. */
   roots: OrgNode[]
@@ -271,6 +274,40 @@ export function wbsNumbers(roots: OrgNode[]): Map<string, string> {
   }
   walk(roots, '')
   return map
+}
+
+/**
+ * Detect the legend entries a chart implies: one per box variant, badge, group
+ * zone style, and comm link actually present. Zone labels reuse the group's own
+ * label when it has one. Callers merge these into the chart's legend.
+ */
+export function autoLegend(chart: OrgChart): LegendItem[] {
+  const variants = new Set<Variant>()
+  const badges = new Set<BadgeType>()
+  visit(chart.roots, (n) => {
+    if (n.variant !== 'hidden') variants.add(n.variant)
+    for (const b of n.badges ?? []) badges.add(b)
+  })
+  const zoneStyles = new Set(chart.groups.map((g) => g.style))
+  const zoneLabel = (style: ZoneStyle, fallback: string) =>
+    chart.groups.find((g) => g.style === style && g.label)?.label ?? fallback
+
+  const items: LegendItem[] = []
+  const add = (marker: LegendMarker, label: string) => items.push({ id: uid('l'), marker, label })
+
+  if (variants.has('primary')) add('boxPrimary', 'Primary')
+  if (variants.has('secondary')) add('boxSecondary', 'Secondary')
+  if (variants.has('tertiary')) add('boxTertiary', 'Tertiary')
+  if (variants.has('accent')) add('boxAccent', 'Accent')
+  if (badges.has('keyGold')) add('keyGold', 'RFP Required')
+  if (badges.has('keyGray')) add('keyGray', 'Company Designated')
+  if (badges.has('cornerAccent')) add('cornerAccent', 'Similar Technical Support Areas')
+  if (zoneStyles.has('green')) add('green', zoneLabel('green', 'Highlighted zone'))
+  if (zoneStyles.has('blue')) add('blue', zoneLabel('blue', 'Grouped zone'))
+  if (zoneStyles.has('orange')) add('orange', zoneLabel('orange', 'Grouped zone'))
+  if (zoneStyles.has('dashed')) add('dashed', zoneLabel('dashed', 'Container'))
+  if (chart.comms.length) add('comm', 'Communication')
+  return items
 }
 
 /** The complete set of on-brand fill values (uppercased for comparison). */
@@ -514,6 +551,7 @@ export function normalizeChart(input: unknown): OrgChart {
       ...(c.meta?.showComplianceOverlay === true ? { showComplianceOverlay: true } : {}),
       ...(c.meta?.showWbsNumbers === true ? { showWbsNumbers: true } : {}),
       ...(typeof c.meta?.caption === 'string' && c.meta.caption.trim() ? { caption: c.meta.caption } : {}),
+      ...(typeof c.meta?.banner === 'string' && c.meta.banner.trim() ? { banner: c.meta.banner } : {}),
     },
     roots: c.roots as OrgNode[],
     groups: Array.isArray(c.groups) ? c.groups : [],
