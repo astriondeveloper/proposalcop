@@ -18,6 +18,10 @@ import type {
   SchedulePhase,
   TableDef,
   Variant,
+  XYChart,
+  XYPoint,
+  XYSeries,
+  XYSeriesKind,
 } from './model'
 import {
   addChild,
@@ -32,6 +36,7 @@ import {
   findNode,
   moveNode,
   normalizeChart,
+  parsePoints,
   REF_KINDS,
   riskLevel,
   setNodePos,
@@ -110,6 +115,7 @@ const LAYOUT_MODES: { value: LayoutMode; label: string }[] = [
   { value: 'timeline', label: 'Timeline (transition schedule)' },
   { value: 'table', label: 'Table (RACI, crosswalk, QASP…)' },
   { value: 'risk', label: 'Risk Cube (5×5 heatmap)' },
+  { value: 'xy', label: 'XY Chart (line / area / bar)' },
 ]
 
 const DIRECTIONS: { value: Direction; label: string }[] = [
@@ -764,6 +770,173 @@ function RiskEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
   )
 }
 
+const XY_KIND_OPTIONS: { value: XYSeriesKind; label: string }[] = [
+  { value: 'line', label: 'Line' },
+  { value: 'area', label: 'Area (filled)' },
+  { value: 'bar', label: 'Bars' },
+]
+
+const XY_VARIANT_OPTIONS: { value: Exclude<Variant, 'hidden'>; label: string }[] = [
+  { value: 'primary', label: 'Force (purple)' },
+  { value: 'secondary', label: 'Sky (blue)' },
+  { value: 'tertiary', label: 'Daylight (light blue)' },
+  { value: 'accent', label: 'Supernova (orange)' },
+]
+
+/** A starter chart for a document that just switched to the xy layout. */
+function starterXY(): XYChart {
+  return {
+    xLabel: 'Weeks after award',
+    yLabel: 'Staff on site',
+    series: [
+      {
+        id: uid('s'),
+        label: 'Staffing',
+        kind: 'line',
+        points: [
+          { x: 0, y: 10 },
+          { x: 4, y: 45 },
+          { x: 8, y: 80 },
+          { x: 12, y: 100 },
+        ],
+      },
+    ],
+  }
+}
+
+/** Free-text "x, y per line" field. Keeps its own draft text so partly typed
+ *  lines aren't rewritten mid-keystroke; only parseable lines are committed. */
+function PointsField({ points, onCommit }: { points: XYPoint[]; onCommit: (pts: XYPoint[]) => void }) {
+  const canon = points.map((p) => `${p.x}, ${p.y}`).join('\n')
+  const [text, setText] = useState(canon)
+  const lastCommitted = useRef(canon)
+  // An external change (undo, template load, JSON apply) resets the draft.
+  useEffect(() => {
+    if (canon !== lastCommitted.current) {
+      setText(canon)
+      lastCommitted.current = canon
+    }
+  }, [canon])
+  return (
+    <label>Points (x, y — one per line)
+      <textarea
+        rows={5}
+        value={text}
+        spellCheck={false}
+        placeholder={'0, 10\n4, 45\n8, 80'}
+        onChange={(e) => {
+          setText(e.target.value)
+          const pts = parsePoints(e.target.value)
+          lastCommitted.current = pts.map((p) => `${p.x}, ${p.y}`).join('\n')
+          onCommit(pts)
+        }}
+      />
+    </label>
+  )
+}
+
+/** Visual editor for the 'xy' layout: axis titles plus one card per series
+ *  (label, mark type, brand color, data points). */
+function XYEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
+  const xy = chart.xy
+  const setXY = (next: XYChart) => onChange({ ...chart, xy: next })
+
+  if (!xy) {
+    return (
+      <div className="editor">
+        <p className="hint">This chart uses the XY layout but has no data yet.</p>
+        <button onClick={() => setXY(starterXY())}>Create a starter series</button>
+      </div>
+    )
+  }
+
+  const patchSeries = (i: number, p: Partial<XYSeries>) => {
+    const next = clone(xy)
+    next.series[i] = { ...next.series[i], ...p }
+    setXY(next)
+  }
+  const moveSeries = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= xy.series.length) return
+    const next = clone(xy)
+    ;[next.series[i], next.series[j]] = [next.series[j], next.series[i]]
+    setXY(next)
+  }
+
+  return (
+    <div className="editor">
+      <div className="two-col">
+        <label>X axis label
+          <input
+            value={xy.xLabel ?? ''}
+            placeholder="e.g. Weeks after award"
+            onChange={(e) => setXY({ ...clone(xy), xLabel: e.target.value || undefined })}
+          />
+        </label>
+        <label>Y axis label
+          <input
+            value={xy.yLabel ?? ''}
+            placeholder="e.g. FTEs on site"
+            onChange={(e) => setXY({ ...clone(xy), yLabel: e.target.value || undefined })}
+          />
+        </label>
+      </div>
+
+      <fieldset>
+        <legend>Series ({xy.series.length})</legend>
+        {xy.series.length === 0 && <p className="hint">No series yet — add the first one below.</p>}
+        {xy.series.map((s, i) => (
+          <div key={s.id} className="card">
+            <div className="detail-row">
+              <input
+                value={s.label}
+                placeholder={`Series ${i + 1}`}
+                aria-label="Series label"
+                onChange={(e) => patchSeries(i, { label: e.target.value })}
+              />
+              <button className="sm" title="Move up (draws earlier)" disabled={i === 0} onClick={() => moveSeries(i, -1)}>↑</button>
+              <button className="sm" title="Move down (draws later)" disabled={i === xy.series.length - 1} onClick={() => moveSeries(i, 1)}>↓</button>
+              <button
+                className="danger sm"
+                aria-label={`Remove series ${s.label || i + 1}`}
+                onClick={() => setXY({ ...clone(xy), series: xy.series.filter((_, j) => j !== i) })}
+              >×</button>
+            </div>
+            <div className="two-col">
+              <label>Mark
+                <select value={s.kind} onChange={(e) => patchSeries(i, { kind: e.target.value as XYSeriesKind })}>
+                  {XY_KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                </select>
+              </label>
+              <label>Color
+                <select
+                  value={s.variant ?? XY_VARIANT_OPTIONS[i % XY_VARIANT_OPTIONS.length].value}
+                  onChange={(e) => patchSeries(i, { variant: e.target.value as Exclude<Variant, 'hidden'> })}
+                >
+                  {XY_VARIANT_OPTIONS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <PointsField points={s.points} onCommit={(points) => patchSeries(i, { points })} />
+          </div>
+        ))}
+        <button
+          onClick={() =>
+            setXY({
+              ...clone(xy),
+              series: [...xy.series, { id: uid('s'), label: '', kind: 'line', points: [] }],
+            })
+          }
+        >+ Series</button>
+      </fieldset>
+      <p className="hint">
+        Lines and areas connect points in the order entered; bars group side-by-side at each x.
+        Use it for staffing ramps, risk burndown, ROI and benefits curves.
+      </p>
+    </div>
+  )
+}
+
 function ChartEditor({ chart, onChange, onSelect }: Props) {
   const nodes = allNodes(chart)
   const options = nodes
@@ -848,6 +1021,7 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
             // first time, so the canvas (and its editor tab) has something to show.
             if (layout === 'table' && !chart.table) next.table = emptyTable()
             if (layout === 'risk' && !chart.risk) next.risk = starterRiskCube()
+            if (layout === 'xy' && !chart.xy) next.xy = starterXY()
             onChange(next)
           }}
         >
@@ -862,6 +1036,11 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
       {chart.meta.layout === 'risk' && (
         <p className="hint">
           This is a 5×5 risk cube. Edit the risk register in the <b>Risks</b> tab.
+        </p>
+      )}
+      {chart.meta.layout === 'xy' && (
+        <p className="hint">
+          This is an XY chart. Edit its series and data points in the <b>Data</b> tab.
         </p>
       )}
       <label>Flow direction
@@ -1524,9 +1703,10 @@ export function SidePanel({
 
   // The first tab edits the chart's content, so it follows the layout mode:
   // boxes for node layouts, the grid editor for tables, the register for risk
-  // cubes. Its label matches.
+  // cubes, the series editor for xy charts. Its label matches.
   const layoutMode = props.chart.meta.layout ?? 'tree'
-  const buildLabel = layoutMode === 'table' ? 'Table' : layoutMode === 'risk' ? 'Risks' : 'Boxes'
+  const buildLabel =
+    layoutMode === 'table' ? 'Table' : layoutMode === 'risk' ? 'Risks' : layoutMode === 'xy' ? 'Data' : 'Boxes'
 
   // Selecting a box anywhere (including clicking it in the chart) jumps the
   // panel to the Boxes tab so its editor and tree row are shown immediately.
@@ -1554,6 +1734,8 @@ export function SidePanel({
           <TableEditor chart={props.chart} onChange={props.onChange} />
         ) : layoutMode === 'risk' ? (
           <RiskEditor chart={props.chart} onChange={props.onChange} />
+        ) : layoutMode === 'xy' ? (
+          <XYEditor chart={props.chart} onChange={props.onChange} />
         ) : (
           <>
             <NodeTree chart={props.chart} selectedId={props.selectedId} onSelect={props.onSelect} />

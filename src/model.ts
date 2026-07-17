@@ -156,7 +156,8 @@ export type Direction = 'TB' | 'BT' | 'LR' | 'RL'
  *  - 'swimlane' independent vertical lanes, one per group (or root)
  *  - 'timeline' transition / phase-in schedule: tasks as bars on a time axis
  *  - 'table'    a branded grid (RACI, compliance crosswalk, QASP/SLA, ...)
- *  - 'risk'     a 5×5 likelihood × consequence risk cube with markers */
+ *  - 'risk'     a 5×5 likelihood × consequence risk cube with markers
+ *  - 'xy'       an X-Y chart: line / area / bar series over numeric axes */
 export type LayoutMode =
   | 'tree'
   | 'radial'
@@ -166,6 +167,7 @@ export type LayoutMode =
   | 'timeline'
   | 'table'
   | 'risk'
+  | 'xy'
 
 /** Optional status coloring for a table cell (green / amber / red / blue tint). */
 export type CellStatus = 'good' | 'warn' | 'bad' | 'info'
@@ -286,6 +288,88 @@ export function normalizeRisk(input: unknown): RiskCube | undefined {
   return out
 }
 
+/* -------------------------------------------------------------- xy chart */
+
+export type XYSeriesKind = 'line' | 'area' | 'bar'
+
+export interface XYPoint {
+  x: number
+  y: number
+}
+
+/** One data series on the 'xy' layout. Color comes from the semantic box
+ *  variants, so charts stay brand-locked. */
+export interface XYSeries {
+  id: string
+  label: string
+  kind: XYSeriesKind
+  /** Semantic color. Defaults rotate primary → secondary → accent → tertiary. */
+  variant?: Exclude<Variant, 'hidden'>
+  points: XYPoint[]
+}
+
+/** Configuration for the 'xy' layout: staffing ramps, risk burndown, ROI,
+ *  benefits curves — any numeric X-Y data. */
+export interface XYChart {
+  series: XYSeries[]
+  xLabel?: string
+  yLabel?: string
+}
+
+const XY_KINDS = ['line', 'area', 'bar']
+const XY_VARIANTS = ['primary', 'secondary', 'tertiary', 'accent']
+
+/** Parse "x, y" pairs, one per line (comma, space or tab separated). Lines
+ *  that don't yield two finite numbers are skipped. */
+export function parsePoints(text: string): XYPoint[] {
+  const out: XYPoint[] = []
+  for (const line of text.split('\n')) {
+    const parts = line.trim().split(/[\s,;]+/).filter(Boolean)
+    if (parts.length < 2) continue
+    const x = Number(parts[0])
+    const y = Number(parts[1])
+    if (Number.isFinite(x) && Number.isFinite(y)) out.push({ x, y })
+  }
+  return out
+}
+
+/** Validate an xy-chart config from untrusted input: coerce series, keep only
+ *  finite points, validate kinds and variants, fill ids. Returns undefined
+ *  when there is no series array at all. */
+export function normalizeXY(input: unknown): XYChart | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const c = input as Partial<XYChart>
+  if (!Array.isArray(c.series)) return undefined
+  const series: XYSeries[] = []
+  for (const s of c.series) {
+    if (!s || typeof s !== 'object') continue
+    const rawId = (s as XYSeries).id
+    const out: XYSeries = {
+      id: typeof rawId === 'string' && rawId ? rawId : uid('s'),
+      label: typeof (s as XYSeries).label === 'string' ? (s as XYSeries).label : '',
+      kind: XY_KINDS.includes((s as XYSeries).kind) ? (s as XYSeries).kind : 'line',
+      points: (Array.isArray((s as XYSeries).points) ? (s as XYSeries).points : [])
+        .filter(
+          (p): p is XYPoint =>
+            !!p &&
+            typeof p === 'object' &&
+            typeof p.x === 'number' &&
+            typeof p.y === 'number' &&
+            Number.isFinite(p.x) &&
+            Number.isFinite(p.y),
+        )
+        .map((p) => ({ x: p.x, y: p.y })),
+    }
+    const variant = (s as XYSeries).variant
+    if (typeof variant === 'string' && XY_VARIANTS.includes(variant)) out.variant = variant
+    series.push(out)
+  }
+  const out: XYChart = { series }
+  if (typeof c.xLabel === 'string' && c.xLabel.trim()) out.xLabel = c.xLabel.trim()
+  if (typeof c.yLabel === 'string' && c.yLabel.trim()) out.yLabel = c.yLabel.trim()
+  return out
+}
+
 /** A labeled vertical marker on the schedule axis (e.g. a 30-day gate). */
 export interface SchedulePhase {
   label: string
@@ -332,6 +416,8 @@ export interface OrgChart {
   table?: TableDef
   /** Risk register + axis titles, used by the 'risk' layout. */
   risk?: RiskCube
+  /** Line / area / bar series, used by the 'xy' layout. */
+  xy?: XYChart
 }
 
 let counter = 0
@@ -672,7 +758,7 @@ export function normalizeChart(input: unknown): OrgChart {
   const dir = c.meta?.direction
   const dirOk = dir === 'TB' || dir === 'BT' || dir === 'LR' || dir === 'RL'
   const layout = c.meta?.layout
-  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline', 'table', 'risk']
+  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline', 'table', 'risk', 'xy']
   const layoutOk = typeof layout === 'string' && LAYOUTS.includes(layout)
   const chart: OrgChart = {
     version: CHART_VERSION,
@@ -699,6 +785,8 @@ export function normalizeChart(input: unknown): OrgChart {
   if (table) chart.table = table
   const risk = normalizeRisk(c.risk)
   if (risk) chart.risk = risk
+  const xy = normalizeXY(c.xy)
+  if (xy) chart.xy = xy
   return sanitizeRefs(sanitizePositions(sanitizeColors(chart)))
 }
 

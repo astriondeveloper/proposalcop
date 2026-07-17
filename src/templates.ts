@@ -1,4 +1,13 @@
-import type { CellStatus, NodeRef, OrgChart, OrgNode, Requirement, RiskItem, TableCell } from './model'
+import type {
+  CellStatus,
+  NodeRef,
+  OrgChart,
+  OrgNode,
+  Requirement,
+  RiskItem,
+  TableCell,
+  XYSeries,
+} from './model'
 import { uid } from './model'
 
 /*
@@ -1108,6 +1117,102 @@ function riskCube(): OrgChart {
   }
 }
 
+/** Shared builder for an xy-layout chart (hidden placeholder root + series). */
+function xyChart(
+  title: string,
+  caption: string,
+  xLabel: string,
+  yLabel: string,
+  series: Omit<XYSeries, 'id'>[],
+): OrgChart {
+  return {
+    version: 1,
+    meta: { title, showTitle: true, layout: 'xy', caption },
+    roots: placeholderRoots(),
+    groups: [],
+    comms: [],
+    legend: [],
+    xy: { xLabel, yLabel, series: series.map((s) => ({ ...s, id: uid('s') })) },
+  }
+}
+
+/** Points from [x, y] tuples, to keep the series below readable. */
+const pts = (...pairs: [number, number][]) => pairs.map(([x, y]) => ({ x, y }))
+
+/** Template 20 — staffing ramp: filled area of cleared staff on site against
+ *  the required level, week by week through phase-in. */
+function staffingRamp(): OrgChart {
+  return xyChart(
+    'Staffing Ramp — Phase-In',
+    'Named, cleared staff reach 96% of the required level by week 8 and 100% before full operational capability — incumbent capture and pre-cleared pipeline hires carry the early ramp.',
+    'Weeks after award',
+    'Cleared staff on site (%)',
+    [
+      {
+        label: 'Astrion staffing',
+        kind: 'area',
+        variant: 'secondary',
+        points: pts([0, 18], [2, 44], [4, 63], [6, 81], [8, 96], [10, 98], [12, 100]),
+      },
+      {
+        label: 'Required level',
+        kind: 'line',
+        variant: 'accent',
+        points: pts([0, 100], [12, 100]),
+      },
+    ],
+  )
+}
+
+/** Template 21 — risk burndown: planned vs. actual weighted risk exposure. */
+function riskBurndown(): OrgChart {
+  return xyChart(
+    'Risk Burndown',
+    'Weighted risk exposure burns down ahead of plan: mitigations funded at award retire the transition and staffing risks in the first two quarters.',
+    'Months after award',
+    'Weighted risk exposure',
+    [
+      {
+        label: 'Planned burndown',
+        kind: 'line',
+        variant: 'tertiary',
+        points: pts([0, 42], [3, 34], [6, 25], [9, 15], [12, 8]),
+      },
+      {
+        label: 'Actual / projected',
+        kind: 'line',
+        variant: 'primary',
+        points: pts([0, 42], [3, 29], [6, 19], [9, 10], [12, 4]),
+      },
+    ],
+  )
+}
+
+/** Template 22 — ROI & benefits: annual savings bars with the cumulative
+ *  benefit line over the contract years. */
+function roiBenefits(): OrgChart {
+  return xyChart(
+    'ROI & Cumulative Benefits',
+    'Automation and predictive maintenance return $18.7M over five years — annual savings grow as tooling deploys, and the investment pays back inside year two.',
+    'Contract year',
+    'Savings ($M)',
+    [
+      {
+        label: 'Annual savings',
+        kind: 'bar',
+        variant: 'secondary',
+        points: pts([1, 1.8], [2, 3.2], [3, 4.1], [4, 4.6], [5, 5.0]),
+      },
+      {
+        label: 'Cumulative benefit',
+        kind: 'line',
+        variant: 'primary',
+        points: pts([1, 1.8], [2, 5.0], [3, 9.1], [4, 13.7], [5, 18.7]),
+      },
+    ],
+  )
+}
+
 export const templates: { key: string; label: string; build: () => OrgChart }[] = [
   { key: 'simple-hierarchy', label: 'Simple Hierarchy (clean top-down)', build: simpleHierarchy },
   { key: 'functional-divisions', label: 'Functional Divisions (department stacks)', build: functionalDivisions },
@@ -1117,6 +1222,9 @@ export const templates: { key: string; label: string; build: () => OrgChart }[] 
   { key: 'teaming', label: 'Teaming & Workshare (prime / subs)', build: teaming },
   { key: 'transition', label: 'Transition Schedule (30/60/90-day)', build: transitionSchedule },
   { key: 'risk-cube', label: 'Risk Cube (5×5 heatmap)', build: riskCube },
+  { key: 'staffing-ramp', label: 'Staffing Ramp (area chart)', build: staffingRamp },
+  { key: 'risk-burndown', label: 'Risk Burndown (line chart)', build: riskBurndown },
+  { key: 'roi', label: 'ROI & Benefits (bar + line)', build: roiBenefits },
   { key: 'raci', label: 'RACI Matrix (responsibility)', build: raciMatrix },
   { key: 'qasp', label: 'QASP / SLA Metrics (table)', build: qaspMetrics },
   { key: 'crosswalk', label: 'Section L-to-M Crosswalk (table)', build: complianceCrosswalk },

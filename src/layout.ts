@@ -9,6 +9,7 @@ import type {
   RefKind,
   RiskItem,
   RiskLevel,
+  XYSeriesKind,
 } from './model'
 import { clone, riskLevel, visit, wbsNumbers } from './model'
 import { computeCompliance, REF_KIND_LABEL } from './compliance'
@@ -208,6 +209,47 @@ export interface RiskCubeLayout {
   panel: { x: number; y: number; w: number; h: number; rows: RiskListRow[] } | null
 }
 
+/** One rendered series on the xy layout. Geometry is pre-computed here so the
+ *  renderer only paints paths and rects. */
+export interface XYSeriesLayout {
+  id: string
+  label: string
+  kind: XYSeriesKind
+  fill: string
+  /** Polyline through the data points (line and area series). */
+  linePath?: string
+  /** Closed region down to the zero baseline (area series). */
+  areaPath?: string
+  /** One rect per point (bar series), already offset for grouping. */
+  bars?: Rect[]
+  /** Screen positions of the data points (marker dots for line/area). */
+  dots: { x: number; y: number }[]
+}
+
+export interface XYLegendItem {
+  label: string
+  fill: string
+  kind: XYSeriesKind
+  x: number
+  y: number
+}
+
+/** Geometry for the 'xy' layout: line / area / bar series over numeric axes. */
+export interface XYLayout {
+  x: number
+  y: number
+  plotW: number
+  plotH: number
+  xLabel: string | null
+  yLabel: string | null
+  xTicks: { x: number; label: string }[]
+  yTicks: { y: number; label: string }[]
+  /** Screen y of the zero baseline (bars and areas grow from here). */
+  zeroY: number
+  series: XYSeriesLayout[]
+  legend: XYLegendItem[]
+}
+
 export interface Layout {
   placed: PlacedNode[]
   /** Reporting-line connector paths. */
@@ -223,6 +265,8 @@ export interface Layout {
   table: TableLayout | null
   /** Risk-cube geometry when the 'risk' layout is active. */
   risk: RiskCubeLayout | null
+  /** XY-chart geometry when the 'xy' layout is active. */
+  xy: XYLayout | null
   caption: CaptionLayout | null
   /** Classification / CUI marking text, rendered as top + bottom banners. */
   banner: string | null
@@ -566,6 +610,7 @@ function finishDataLayout(
     timeline: null,
     table: null,
     risk: null,
+    xy: null,
     caption,
     banner: chart.meta.banner ?? null,
     width: Math.max(contentRight, caption ? caption.x + caption.w : 0) + M.canvasPad,
@@ -705,6 +750,7 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
     timeline: null,
     table: null,
     risk: null,
+    xy: null,
     caption,
     banner: chart.meta.banner ?? null,
     width,
@@ -1550,6 +1596,159 @@ function layoutRisk(chart: OrgChart): Layout {
   return finishDataLayout(chart, right, bottom, { risk })
 }
 
+/* -------------------------------------------------------------- xy chart */
+
+const XY_PLOT_W = 640
+const XY_PLOT_H = 320
+const XY_LEGEND_H = 20
+/** Fraction of an x-slot occupied by a bar group. */
+const XY_BAR_FILL = 0.62
+/** Default series colors rotate through the semantic variants. */
+const XY_SERIES_VARIANTS = ['primary', 'secondary', 'accent', 'tertiary'] as const
+
+/** A "nice" step (1/2/5 × 10ⁿ) so ~count ticks span the range. */
+function niceStep(span: number, count: number): number {
+  const step0 = Math.pow(10, Math.floor(Math.log10(span / count)))
+  const err = span / count / step0
+  return step0 * (err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1)
+}
+
+/**
+ * Round tick values covering [min, max]. With `expand` the range is widened to
+ * step multiples (axis domains snap to the grid); without it, ticks fall
+ * strictly inside the data range. Exported for tests.
+ */
+export function niceTicks(min: number, max: number, count = 5, expand = false): number[] {
+  if (!(max > min)) max = min + 1
+  const step = niceStep(max - min, count)
+  const start = expand ? Math.floor(min / step) * step : Math.ceil(min / step) * step
+  const end = expand ? Math.ceil(max / step) * step : max
+  const ticks: number[] = []
+  for (let v = start; v <= end + step * 1e-6; v += step) ticks.push(+v.toFixed(10))
+  return ticks
+}
+
+/** Compact tick label (grouping separators, float noise trimmed). */
+function tickLabel(v: number): string {
+  if (Math.abs(v) >= 1000 && Number.isInteger(v)) return v.toLocaleString('en-US')
+  return String(+v.toFixed(6))
+}
+
+/**
+ * X-Y chart layout: line, area and bar series over shared numeric axes.
+ * The y domain always includes zero (ramps, burndowns and ROI charts read
+ * from a common baseline); bars group side-by-side inside an x slot sized
+ * from the closest pair of x values.
+ */
+function layoutXY(chart: OrgChart): Layout {
+  const oy = M.canvasPad + (chart.meta.showTitle && chart.meta.title.trim() ? 44 : 0)
+  const xy = chart.xy
+  const series = xy?.series ?? []
+  const all = series.flatMap((s) => s.points)
+
+  // Data extents (safe defaults for an empty chart).
+  let xMin = all.length ? Math.min(...all.map((p) => p.x)) : 0
+  let xMax = all.length ? Math.max(...all.map((p) => p.x)) : 10
+  const dataYMin = all.length ? Math.min(...all.map((p) => p.y)) : 0
+  const dataYMax = all.length ? Math.max(...all.map((p) => p.y)) : 5
+
+  // Bars occupy an x slot; widen the domain half a slot each side so the
+  // first and last groups sit fully inside the plot.
+  const barSeries = series.filter((s) => s.kind === 'bar' && s.points.length)
+  let slot = 1
+  if (barSeries.length) {
+    const xs = [...new Set(barSeries.flatMap((s) => s.points.map((p) => p.x)))].sort((a, b) => a - b)
+    if (xs.length > 1) {
+      slot = Infinity
+      for (let i = 1; i < xs.length; i++) slot = Math.min(slot, xs[i] - xs[i - 1])
+    }
+    xMin -= slot / 2
+    xMax += slot / 2
+  }
+  if (xMax === xMin) {
+    xMin -= 0.5
+    xMax += 0.5
+  }
+
+  // Y domain: include zero, snap to the tick grid.
+  const yTickVals = niceTicks(Math.min(0, dataYMin), Math.max(0, dataYMax), 5, true)
+  const yMin = yTickVals[0]
+  const yMax = yTickVals[yTickVals.length - 1]
+
+  // Gutters sized from the actual tick labels.
+  const yLabels = yTickVals.map(tickLabel)
+  const gutterL = Math.max(...yLabels.map((l) => textWidth(l, 10.5))) + 14 + (xy?.yLabel ? 20 : 0)
+  const x0 = M.canvasPad + gutterL
+  const legendItems = series.filter((s) => s.label.trim())
+  const y0 = oy + (legendItems.length ? XY_LEGEND_H + 8 : 0) + 6
+  const plotW = XY_PLOT_W
+  const plotH = XY_PLOT_H
+
+  const sx = (v: number) => x0 + ((v - xMin) / (xMax - xMin)) * plotW
+  const sy = (v: number) => y0 + plotH - ((v - yMin) / (yMax - yMin)) * plotH
+  const zeroY = sy(Math.min(Math.max(0, yMin), yMax))
+
+  const xTicks = niceTicks(xMin, xMax, 6).map((v) => ({ x: sx(v), label: tickLabel(v) }))
+  const yTicks = yTickVals.map((v) => ({ y: sy(v), label: tickLabel(v) }))
+
+  let barIndex = 0
+  const nBars = barSeries.length
+  const groupW = ((slot * XY_BAR_FILL) / (xMax - xMin)) * plotW
+  const seriesLayouts: XYSeriesLayout[] = series.map((s, i) => {
+    const variant = s.variant ?? XY_SERIES_VARIANTS[i % XY_SERIES_VARIANTS.length]
+    const fill = (variantFill[variant] ?? variantFill.secondary).fill
+    const dots = s.points.map((p) => ({ x: sx(p.x), y: sy(p.y) }))
+    const out: XYSeriesLayout = { id: s.id, label: s.label, kind: s.kind, fill, dots }
+    if (s.kind === 'bar') {
+      const w = nBars ? groupW / nBars : groupW
+      const offset = -groupW / 2 + barIndex * w
+      barIndex += 1
+      out.bars = s.points.map((p) => {
+        const px = sx(p.x) + offset
+        const py = sy(p.y)
+        return {
+          x: px,
+          y: Math.min(py, zeroY),
+          w,
+          h: Math.abs(zeroY - py),
+        }
+      })
+    } else if (dots.length) {
+      out.linePath = dots.map((d, k) => `${k === 0 ? 'M' : 'L'} ${d.x} ${d.y}`).join(' ')
+      if (s.kind === 'area') {
+        out.areaPath = `${out.linePath} L ${dots[dots.length - 1].x} ${zeroY} L ${dots[0].x} ${zeroY} Z`
+      }
+    }
+    return out
+  })
+
+  // Horizontal legend above the plot, one entry per labeled series.
+  let lx = x0
+  const legend: XYLegendItem[] = legendItems.map((s) => {
+    const li = seriesLayouts.find((sl) => sl.id === s.id)!
+    const item: XYLegendItem = { label: s.label, fill: li.fill, kind: s.kind, x: lx, y: oy + 6 }
+    lx += 22 + textWidth(s.label, 11) + 18
+    return item
+  })
+
+  const xyLayout: XYLayout = {
+    x: x0,
+    y: y0,
+    plotW,
+    plotH,
+    xLabel: xy?.xLabel ?? null,
+    yLabel: xy?.yLabel ?? null,
+    xTicks,
+    yTicks,
+    zeroY,
+    series: seriesLayouts,
+    legend,
+  }
+  const bottom = y0 + plotH + 22 + (xy?.xLabel ? 20 : 0)
+  const right = Math.max(x0 + plotW, lx)
+  return finishDataLayout(chart, right, bottom, { xy: xyLayout })
+}
+
 export function layoutChart(input: OrgChart): Layout {
   // WBS numbering is a view concern: bake outline numbers into titles on a copy
   // so the deterministic layout and exports need no structural change.
@@ -1562,6 +1761,7 @@ export function layoutChart(input: OrgChart): Layout {
   if (mode === 'timeline') return layoutTimeline(chart)
   if (mode === 'table') return layoutTable(chart)
   if (mode === 'risk') return layoutRisk(chart)
+  if (mode === 'xy') return layoutXY(chart)
 
   const dir: Direction = chart.meta.direction ?? 'TB'
   const vertical = dir === 'TB' || dir === 'BT'

@@ -875,10 +875,165 @@ function RiskSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) 
   )
 }
 
+const XY_GRID = '#E7E7EE'
+const XY_AREA_OPACITY = 0.24
+
+/** Legend swatch for an xy series, shaped by its kind. */
+function XYLegendSwatch({ kind, fill, x, y }: { kind: string; fill: string; x: number; y: number }) {
+  if (kind === 'bar') return <rect x={x} y={y - 9} width={10} height={11} rx={1.5} fill={fill} />
+  if (kind === 'area')
+    return (
+      <g>
+        <rect x={x} y={y - 8} width={14} height={9} fill={fill} opacity={XY_AREA_OPACITY} />
+        <line x1={x} y1={y - 8} x2={x + 14} y2={y - 8} stroke={fill} strokeWidth={2.2} />
+      </g>
+    )
+  return <line x1={x} y1={y - 4} x2={x + 14} y2={y - 4} stroke={fill} strokeWidth={2.6} strokeLinecap="round" />
+}
+
+/** X-Y chart renderer: gridlines, axes, then area → bar → line → dot passes so
+ *  overlapping series stay readable. */
+function XYSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
+  const xc = layout.xy!
+  const { width, height } = layout
+  const plotBottom = xc.y + xc.plotH
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fontFamily={brand.fontFamily}
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <defs>
+        <linearGradient id="skyGradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={brand.skyGradient[0]} />
+          <stop offset="50%" stopColor={brand.skyGradient[1]} />
+          <stop offset="100%" stopColor={brand.skyGradient[2]} />
+        </linearGradient>
+      </defs>
+      <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+
+      {/* Horizontal gridlines + y tick labels. */}
+      {xc.yTicks.map((t, i) => (
+        <g key={`gy-${i}`}>
+          <line x1={xc.x} y1={t.y} x2={xc.x + xc.plotW} y2={t.y} stroke={XY_GRID} strokeWidth={1} />
+          <text x={xc.x - 8} y={t.y + 3.5} textAnchor="end" fontSize={10.5} fill={brand.detailText}>
+            {t.label}
+          </text>
+        </g>
+      ))}
+
+      {/* X tick marks + labels. */}
+      {xc.xTicks.map((t, i) => (
+        <g key={`gx-${i}`}>
+          <line x1={t.x} y1={plotBottom} x2={t.x} y2={plotBottom + 4} stroke={brand.line} strokeWidth={1.2} />
+          <text x={t.x} y={plotBottom + 16} textAnchor="middle" fontSize={10.5} fill={brand.detailText}>
+            {t.label}
+          </text>
+        </g>
+      ))}
+
+      {/* Axis frame: left edge + zero baseline. */}
+      <line x1={xc.x} y1={xc.y} x2={xc.x} y2={plotBottom} stroke={brand.line} strokeWidth={1.5} />
+      <line x1={xc.x} y1={plotBottom} x2={xc.x + xc.plotW} y2={plotBottom} stroke={brand.line} strokeWidth={1.5} />
+      {xc.zeroY < plotBottom - 0.5 && (
+        <line x1={xc.x} y1={xc.zeroY} x2={xc.x + xc.plotW} y2={xc.zeroY} stroke={brand.heading} strokeWidth={1} />
+      )}
+
+      {/* Areas first (translucent), then bars, lines, and marker dots. */}
+      {xc.series.map(
+        (s) =>
+          s.areaPath && <path key={`a-${s.id}`} d={s.areaPath} fill={s.fill} opacity={XY_AREA_OPACITY} />,
+      )}
+      {xc.series.map((s) =>
+        s.bars ? (
+          <g key={`b-${s.id}`}>
+            {s.bars.map((b, i) => (
+              <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx={2} fill={s.fill}>
+                <title>{s.label}</title>
+              </rect>
+            ))}
+          </g>
+        ) : null,
+      )}
+      {xc.series.map(
+        (s) =>
+          s.linePath && (
+            <path
+              key={`l-${s.id}`}
+              d={s.linePath}
+              fill="none"
+              stroke={s.fill}
+              strokeWidth={2.5}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          ),
+      )}
+      {xc.series.map((s) =>
+        s.kind === 'bar' ? null : (
+          <g key={`d-${s.id}`}>
+            {s.dots.map((d, i) => (
+              <circle key={i} cx={d.x} cy={d.y} r={3} fill={s.fill} stroke={brand.white} strokeWidth={1.2}>
+                <title>{s.label}</title>
+              </circle>
+            ))}
+          </g>
+        ),
+      )}
+
+      {/* Series legend (above the plot). */}
+      {xc.legend.map((item, i) => (
+        <g key={`leg-${i}`}>
+          <XYLegendSwatch kind={item.kind} fill={item.fill} x={item.x} y={item.y} />
+          <text x={item.x + 20} y={item.y} fontSize={11} fill={brand.detailText}>
+            {item.label}
+          </text>
+        </g>
+      ))}
+
+      {/* Axis titles. */}
+      {xc.xLabel && (
+        <text
+          x={xc.x + xc.plotW / 2}
+          y={plotBottom + 36}
+          textAnchor="middle"
+          fontSize={11.5}
+          fontWeight={700}
+          letterSpacing="0.5"
+          fill={brand.heading}
+        >
+          {xc.xLabel.toUpperCase()}
+        </text>
+      )}
+      {xc.yLabel && (
+        <text
+          x={M.canvasPad + 10}
+          y={xc.y + xc.plotH / 2}
+          textAnchor="middle"
+          fontSize={11.5}
+          fontWeight={700}
+          letterSpacing="0.5"
+          fill={brand.heading}
+          transform={`rotate(-90 ${M.canvasPad + 10} ${xc.y + xc.plotH / 2})`}
+        >
+          {xc.yLabel.toUpperCase()}
+        </text>
+      )}
+
+      <ChartChrome layout={layout} />
+    </svg>
+  )
+}
+
 export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, ariaLabel }: Props) {
   if (layout.timeline) return <TimelineSvg layout={layout} ariaLabel={ariaLabel} />
   if (layout.table) return <TableSvg layout={layout} ariaLabel={ariaLabel} />
   if (layout.risk) return <RiskSvg layout={layout} ariaLabel={ariaLabel} />
+  if (layout.xy) return <XYSvg layout={layout} ariaLabel={ariaLabel} />
   const { placed, connectors, zones, comms, legend, title, compliance, caption, banner, width, height } = layout
   const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
   const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {
