@@ -23,6 +23,7 @@ import {
   riskSelId,
   seriesSelId,
   setNodePos,
+  stepSelId,
   uid,
   type OrgChart,
 } from './model'
@@ -231,6 +232,15 @@ export default function App() {
           series.splice(i + 1, 0, copy)
           setChart({ ...chart, xy: { ...chart.xy, series } })
           setSelectedId(seriesSelId(copy.id))
+        } else if (sel?.kind === 'step' && chart.flow) {
+          const i = chart.flow.steps.findIndex((s) => s.id === sel.id)
+          if (i < 0) return
+          e.preventDefault()
+          const copy = { ...clone(chart.flow.steps[i]), id: uid('f') }
+          const steps = [...chart.flow.steps]
+          steps.splice(i + 1, 0, copy)
+          setChart({ ...chart, flow: { ...chart.flow, steps } })
+          setSelectedId(stepSelId(copy.id))
         } else if (!sel && findNode(chart, selectedId)) {
           e.preventDefault()
           const r = duplicateNode(chart, selectedId)
@@ -248,6 +258,11 @@ export default function App() {
         } else if (sel?.kind === 'series' && chart.xy) {
           e.preventDefault()
           setChart({ ...chart, xy: { ...chart.xy, series: chart.xy.series.filter((s) => s.id !== sel.id) } })
+          setSelectedId(null)
+          canvasRef.current?.focus()
+        } else if (sel?.kind === 'step' && chart.flow) {
+          e.preventDefault()
+          setChart({ ...chart, flow: { ...chart.flow, steps: chart.flow.steps.filter((s) => s.id !== sel.id) } })
           setSelectedId(null)
           canvasRef.current?.focus()
         } else if (!sel && findNode(chart, selectedId)) {
@@ -684,6 +699,10 @@ export default function App() {
     if (view.timeline) return `${name} schedule, ${view.timeline.bars.length} tasks`
     if (view.risk) return `${name} risk cube, ${view.risk.markers.length} risks`
     if (view.xy) return `${name} chart, ${view.xy.series.length} data series`
+    if (view.flow) {
+      const kind = view.flow.kind === 'cycle' ? 'cycle diagram' : view.flow.kind === 'pipeline' ? 'pipeline' : 'layer stack'
+      return `${name} ${kind}, ${view.flow.steps.length} steps`
+    }
     return `${name} org chart, ${view.placed.length} ${view.placed.length === 1 ? 'box' : 'boxes'}`
   })()
 
@@ -857,7 +876,7 @@ export default function App() {
               setSelectedId(null)
             }}
           >
-            {view.placed.length === 0 && !view.timeline && !view.table && !view.risk && !view.xy ? (
+            {view.placed.length === 0 && !view.timeline && !view.table && !view.risk && !view.xy && !view.flow ? (
               <div className="empty-state" onClick={(e) => e.stopPropagation()}>
                 <h2>Nothing to show yet</h2>
                 <p>This chart has no visible boxes. Start from a template, or add a box from the Boxes panel.</p>

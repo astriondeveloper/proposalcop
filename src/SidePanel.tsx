@@ -8,6 +8,8 @@ import type {
   Direction,
   EdgeArrow,
   EdgeStyle,
+  FlowDef,
+  FlowStep,
   LayoutMode,
   LegendMarker,
   OrgChart,
@@ -121,6 +123,9 @@ const LAYOUT_MODES: { value: LayoutMode; label: string }[] = [
   { value: 'table', label: 'Table (RACI, crosswalk, QASP…)' },
   { value: 'risk', label: 'Risk Cube (5×5 heatmap)' },
   { value: 'xy', label: 'XY Chart (line / area / bar)' },
+  { value: 'cycle', label: 'Cycle (PDCA loop)' },
+  { value: 'pipeline', label: 'Pipeline (chevron stages)' },
+  { value: 'stack', label: 'Stack (technology layers)' },
 ]
 
 const DIRECTIONS: { value: Direction; label: string }[] = [
@@ -861,6 +866,146 @@ const XY_VARIANT_OPTIONS: { value: Exclude<Variant, 'hidden'>; label: string }[]
   { value: 'accent', label: 'Supernova (orange)' },
 ]
 
+/** Starter steps for a chart that just switched to a flow layout. */
+function starterFlow(kind: 'cycle' | 'pipeline' | 'stack'): FlowDef {
+  const step = (title: string, detail?: string): FlowStep => ({
+    id: uid('f'),
+    title,
+    ...(detail ? { detail } : {}),
+  })
+  if (kind === 'cycle') {
+    return {
+      hub: 'Continuous Improvement',
+      steps: [step('Plan'), step('Do'), step('Check'), step('Act')],
+    }
+  }
+  if (kind === 'pipeline') {
+    return { steps: [step('Plan'), step('Build'), step('Test'), step('Release'), step('Operate')] }
+  }
+  return {
+    steps: [
+      step('Applications', 'Mission tools and dashboards'),
+      step('Platform', 'APIs, services, DevSecOps'),
+      step('Data', 'Storage, pipelines, analytics'),
+      step('Infrastructure', 'Cloud, network, compute'),
+    ],
+  }
+}
+
+/** Shared editor for the cycle / pipeline / stack layouts: an ordered list of
+ *  steps (title, supporting line, brand color) plus the cycle's hub label. */
+function FlowEditor({
+  chart,
+  onChange,
+  selectedId,
+}: Pick<Props, 'chart' | 'onChange' | 'selectedId'>) {
+  const mode = chart.meta.layout as 'cycle' | 'pipeline' | 'stack'
+  const flow = chart.flow
+  const setFlow = (next: FlowDef) => onChange({ ...chart, flow: next })
+  const noun = mode === 'cycle' ? 'step' : mode === 'pipeline' ? 'stage' : 'layer'
+
+  const flashId = useJumpToSelection(selectedId, (sel) =>
+    sel.kind === 'step' ? { cardId: `flow-card-${sel.id}` } : null,
+  )
+
+  if (!flow) {
+    return (
+      <div className="editor">
+        <p className="hint">This chart uses the {mode} layout but has no {noun}s yet.</p>
+        <button onClick={() => setFlow(starterFlow(mode))}>Create starter {noun}s</button>
+      </div>
+    )
+  }
+
+  const patchStep = (i: number, p: Partial<FlowStep>) => {
+    const next = clone(flow)
+    next.steps[i] = { ...next.steps[i], ...p }
+    if (!p.detail && 'detail' in p) delete next.steps[i].detail
+    if (!p.variant && 'variant' in p) delete next.steps[i].variant
+    setFlow(next)
+  }
+  const moveStep = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= flow.steps.length) return
+    const next = clone(flow)
+    ;[next.steps[i], next.steps[j]] = [next.steps[j], next.steps[i]]
+    setFlow(next)
+  }
+
+  return (
+    <div className="editor">
+      {mode === 'cycle' && (
+        <label>Hub label (center of the loop)
+          <input
+            value={flow.hub ?? ''}
+            placeholder="e.g. Continuous Improvement"
+            onChange={(e) => setFlow({ ...clone(flow), hub: e.target.value || undefined })}
+          />
+        </label>
+      )}
+      <fieldset>
+        <legend>{`${noun.charAt(0).toUpperCase()}${noun.slice(1)}s (${flow.steps.length})`}</legend>
+        {flow.steps.length === 0 && <p className="hint">None yet — add the first one below.</p>}
+        {flow.steps.map((s, i) => (
+          <div
+            key={s.id}
+            id={`flow-card-${s.id}`}
+            className={`card${flashId === `flow-card-${s.id}` ? ' flash' : ''}`}
+          >
+            <div className="detail-row">
+              <input
+                value={s.title}
+                placeholder={`${noun.charAt(0).toUpperCase()}${noun.slice(1)} ${i + 1}`}
+                aria-label={`${noun} title`}
+                onChange={(e) => patchStep(i, { title: e.target.value })}
+              />
+              <button className="sm" title="Move earlier" disabled={i === 0} onClick={() => moveStep(i, -1)}>↑</button>
+              <button className="sm" title="Move later" disabled={i === flow.steps.length - 1} onClick={() => moveStep(i, 1)}>↓</button>
+              <button
+                className="danger sm"
+                aria-label={`Remove ${noun} ${s.title || i + 1}`}
+                onClick={() => setFlow({ ...clone(flow), steps: flow.steps.filter((_, j) => j !== i) })}
+              >×</button>
+            </div>
+            <input
+              value={s.detail ?? ''}
+              placeholder={
+                mode === 'pipeline'
+                  ? 'Supporting line (e.g. security gate)'
+                  : mode === 'stack'
+                    ? 'Layer contents'
+                    : 'Supporting line (outside the ring)'
+              }
+              aria-label={`${noun} detail`}
+              onChange={(e) => patchStep(i, { detail: e.target.value || undefined })}
+            />
+            <label>Color
+              <select
+                value={s.variant ?? ''}
+                onChange={(e) =>
+                  patchStep(i, { variant: (e.target.value || undefined) as FlowStep['variant'] })
+                }
+              >
+                <option value="">Auto (rotates brand colors)</option>
+                {XY_VARIANT_OPTIONS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+              </select>
+            </label>
+          </div>
+        ))}
+        <button
+          onClick={() =>
+            setFlow({ ...clone(flow), steps: [...flow.steps, { id: uid('f'), title: '' }] })
+          }
+        >{`+ ${noun.charAt(0).toUpperCase()}${noun.slice(1)}`}</button>
+      </fieldset>
+      <p className="hint">
+        The same {noun}s re-render as a loop, chevrons, or layers when you switch the layout on the
+        Chart tab — try all three.
+      </p>
+    </div>
+  )
+}
+
 /** A starter chart for a document that just switched to the xy layout. */
 function starterXY(): XYChart {
   return {
@@ -1031,7 +1176,8 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
   // timeline draws no edges, legend, overlay badges or manual positions — so
   // controls that could not affect the rendered chart are hidden.
   const mode = chart.meta.layout ?? 'tree'
-  const isDataMode = mode === 'table' || mode === 'risk' || mode === 'xy'
+  const isDataMode =
+    mode === 'table' || mode === 'risk' || mode === 'xy' || mode === 'cycle' || mode === 'pipeline' || mode === 'stack'
   const isNodeGraph = !isDataMode && mode !== 'timeline'
 
   const workshare = workshareRollup(chart)
@@ -1219,6 +1365,9 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
             if (layout === 'table' && !chart.table) next.table = emptyTable()
             if (layout === 'risk' && !chart.risk) next.risk = starterRiskCube()
             if (layout === 'xy' && !chart.xy) next.xy = starterXY()
+            if ((layout === 'cycle' || layout === 'pipeline' || layout === 'stack') && !chart.flow) {
+              next.flow = starterFlow(layout)
+            }
             onChange(next)
           }}
         >
@@ -1238,6 +1387,13 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
       {chart.meta.layout === 'xy' && (
         <p className="hint">
           This is an XY chart. Edit its series and data points in the <b>Data</b> tab.
+        </p>
+      )}
+      {(chart.meta.layout === 'cycle' || chart.meta.layout === 'pipeline' || chart.meta.layout === 'stack') && (
+        <p className="hint">
+          This is a {chart.meta.layout === 'cycle' ? 'cycle loop' : chart.meta.layout === 'pipeline' ? 'chevron pipeline' : 'layer stack'}.
+          Edit its content in the <b>Steps</b> tab — the same steps re-render when you switch between
+          Cycle, Pipeline and Stack.
         </p>
       )}
       {isNodeGraph && (
@@ -1915,6 +2071,7 @@ export function SidePanel({
   // boxes for node layouts, the grid editor for tables, the register for risk
   // cubes, the series editor for xy charts. Its label matches.
   const layoutMode = props.chart.meta.layout ?? 'tree'
+  const isFlowMode = layoutMode === 'cycle' || layoutMode === 'pipeline' || layoutMode === 'stack'
   const buildLabel =
     layoutMode === 'table'
       ? 'Table'
@@ -1922,9 +2079,11 @@ export function SidePanel({
         ? 'Risks'
         : layoutMode === 'xy'
           ? 'Data'
-          : layoutMode === 'timeline'
-            ? 'Tasks'
-            : 'Boxes'
+          : isFlowMode
+            ? 'Steps'
+            : layoutMode === 'timeline'
+              ? 'Tasks'
+              : 'Boxes'
 
   // Selecting a box anywhere (including clicking it in the chart) jumps the
   // panel to the Boxes tab so its editor and tree row are shown immediately.
@@ -1954,6 +2113,8 @@ export function SidePanel({
           <RiskEditor chart={props.chart} onChange={props.onChange} selectedId={props.selectedId} />
         ) : layoutMode === 'xy' ? (
           <XYEditor chart={props.chart} onChange={props.onChange} selectedId={props.selectedId} />
+        ) : isFlowMode ? (
+          <FlowEditor chart={props.chart} onChange={props.onChange} selectedId={props.selectedId} />
         ) : (
           <>
             <NodeTree chart={props.chart} selectedId={props.selectedId} onSelect={props.onSelect} />

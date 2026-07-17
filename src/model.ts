@@ -157,7 +157,10 @@ export type Direction = 'TB' | 'BT' | 'LR' | 'RL'
  *  - 'timeline' transition / phase-in schedule: tasks as bars on a time axis
  *  - 'table'    a branded grid (RACI, compliance crosswalk, QASP/SLA, ...)
  *  - 'risk'     a 5×5 likelihood × consequence risk cube with markers
- *  - 'xy'       an X-Y chart: line / area / bar series over numeric axes */
+ *  - 'xy'       an X-Y chart: line / area / bar series over numeric axes
+ *  - 'cycle'    a circular loop of steps (PDCA, continuous improvement)
+ *  - 'pipeline' left-to-right chevron stages (DevSecOps, lifecycle phases)
+ *  - 'stack'    full-width layers (technology stack) */
 export type LayoutMode =
   | 'tree'
   | 'radial'
@@ -168,6 +171,9 @@ export type LayoutMode =
   | 'table'
   | 'risk'
   | 'xy'
+  | 'cycle'
+  | 'pipeline'
+  | 'stack'
 
 /** Optional status coloring for a table cell (green / amber / red / blue tint). */
 export type CellStatus = 'good' | 'warn' | 'bad' | 'info'
@@ -426,6 +432,57 @@ export interface OrgChart {
   risk?: RiskCube
   /** Line / area / bar series, used by the 'xy' layout. */
   xy?: XYChart
+  /** Steps shared by the 'cycle' / 'pipeline' / 'stack' layouts. */
+  flow?: FlowDef
+}
+
+/* ------------------------------------------------ flow (cycle / pipeline / stack) */
+
+/** One step in a flow diagram: a cycle segment, a pipeline chevron, or a
+ *  stack layer, depending on the chart's layout mode. */
+export interface FlowStep {
+  id: string
+  title: string
+  /** Short supporting line (security gate, layer contents, ...). */
+  detail?: string
+  /** Semantic color. Defaults rotate primary → secondary → tertiary → accent. */
+  variant?: Exclude<Variant, 'hidden'>
+}
+
+/** Configuration shared by the 'cycle', 'pipeline' and 'stack' layouts. The
+ *  same steps re-render as a loop, as chevrons, or as layers when the layout
+ *  mode changes. */
+export interface FlowDef {
+  steps: FlowStep[]
+  /** Label drawn in the middle of a cycle (e.g. "Continuous Improvement"). */
+  hub?: string
+}
+
+const FLOW_VARIANTS = ['primary', 'secondary', 'tertiary', 'accent']
+
+/** Validate a flow config from untrusted input: coerce steps, validate
+ *  variants, fill ids. Returns undefined when there is no steps array. */
+export function normalizeFlow(input: unknown): FlowDef | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const f = input as Partial<FlowDef>
+  if (!Array.isArray(f.steps)) return undefined
+  const steps: FlowStep[] = []
+  for (const s of f.steps) {
+    if (!s || typeof s !== 'object') continue
+    const rawId = (s as FlowStep).id
+    const out: FlowStep = {
+      id: typeof rawId === 'string' && rawId ? rawId : uid('f'),
+      title: typeof (s as FlowStep).title === 'string' ? (s as FlowStep).title : '',
+    }
+    const detail = (s as FlowStep).detail
+    if (typeof detail === 'string' && detail.trim()) out.detail = detail.trim()
+    const variant = (s as FlowStep).variant
+    if (typeof variant === 'string' && FLOW_VARIANTS.includes(variant)) out.variant = variant
+    steps.push(out)
+  }
+  const out: FlowDef = { steps }
+  if (typeof f.hub === 'string' && f.hub.trim()) out.hub = f.hub.trim()
+  return out
 }
 
 /* ---------------------------------------------------- persuasion elements */
@@ -496,11 +553,13 @@ export type DataSelection =
   | { kind: 'col'; col: number }
   | { kind: 'risk'; id: string }
   | { kind: 'series'; id: string }
+  | { kind: 'step'; id: string }
 
 export const cellSelId = (row: number, col: number): string => `cell:${row}:${col}`
 export const colSelId = (col: number): string => `col:${col}`
 export const riskSelId = (id: string): string => `risk:${id}`
 export const seriesSelId = (id: string): string => `series:${id}`
+export const stepSelId = (id: string): string => `step:${id}`
 
 /** Parse a selection id into its data-element form, or null when it is not a
  *  data-element id (e.g. a node id, or nothing selected). */
@@ -526,6 +585,10 @@ export function parseSelection(sel: string | null | undefined): DataSelection | 
   if (parts[0] === 'series' && parts.length >= 2) {
     const id = parts.slice(1).join(':')
     return id ? { kind: 'series', id } : null
+  }
+  if (parts[0] === 'step' && parts.length >= 2) {
+    const id = parts.slice(1).join(':')
+    return id ? { kind: 'step', id } : null
   }
   return null
 }
@@ -868,7 +931,20 @@ export function normalizeChart(input: unknown): OrgChart {
   const dir = c.meta?.direction
   const dirOk = dir === 'TB' || dir === 'BT' || dir === 'LR' || dir === 'RL'
   const layout = c.meta?.layout
-  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline', 'table', 'risk', 'xy']
+  const LAYOUTS = [
+    'tree',
+    'radial',
+    'layered',
+    'matrix',
+    'swimlane',
+    'timeline',
+    'table',
+    'risk',
+    'xy',
+    'cycle',
+    'pipeline',
+    'stack',
+  ]
   const layoutOk = typeof layout === 'string' && LAYOUTS.includes(layout)
   const chart: OrgChart = {
     version: CHART_VERSION,
@@ -902,6 +978,8 @@ export function normalizeChart(input: unknown): OrgChart {
   if (risk) chart.risk = risk
   const xy = normalizeXY(c.xy)
   if (xy) chart.xy = xy
+  const flow = normalizeFlow(c.flow)
+  if (flow) chart.flow = flow
   return sanitizeRefs(sanitizePositions(sanitizeColors(chart)))
 }
 

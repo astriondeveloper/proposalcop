@@ -2,6 +2,7 @@ import type {
   CellStatus,
   CommLink,
   Direction,
+  FlowStep,
   Group,
   LegendItem,
   OrgChart,
@@ -290,6 +291,30 @@ export interface XYLayout {
   legend: XYLegendItem[]
 }
 
+/** One rendered flow step: a cycle segment, pipeline chevron, or stack layer.
+ *  `path` is the clickable filled shape; labels are pre-wrapped. */
+export interface FlowStepLayout {
+  id: string
+  path: string
+  fill: string
+  text: string
+  titleLines: string[]
+  /** Title anchor (centered). */
+  labelX: number
+  labelY: number
+  /** Supporting text, positioned per mode (outside ring / under chevron /
+   *  inside layer). */
+  detail: { lines: string[]; x: number; y: number; anchor: 'start' | 'middle' | 'end' } | null
+}
+
+/** Geometry for the 'cycle' / 'pipeline' / 'stack' layouts. */
+export interface FlowLayout {
+  kind: 'cycle' | 'pipeline' | 'stack'
+  steps: FlowStepLayout[]
+  /** Center label of a cycle. */
+  hub: { lines: string[]; x: number; y: number } | null
+}
+
 export interface Layout {
   placed: PlacedNode[]
   /** Reporting-line connector paths. */
@@ -307,6 +332,8 @@ export interface Layout {
   risk: RiskCubeLayout | null
   /** XY-chart geometry when the 'xy' layout is active. */
   xy: XYLayout | null
+  /** Flow geometry when a 'cycle' / 'pipeline' / 'stack' layout is active. */
+  flow: FlowLayout | null
   caption: CaptionLayout | null
   /** Win-theme banner strip above the graphic (persuasion layer). */
   winTheme: WinThemeLayout | null
@@ -761,6 +788,7 @@ function finishDataLayout(
     table: null,
     risk: null,
     xy: null,
+    flow: null,
     banner: chart.meta.banner ?? null,
     ...adorned,
     ...parts,
@@ -897,6 +925,7 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
     table: null,
     risk: null,
     xy: null,
+    flow: null,
     banner: chart.meta.banner ?? null,
     ...adorned,
   }
@@ -1894,6 +1923,201 @@ function layoutXY(chart: OrgChart): Layout {
   return finishDataLayout(chart, right, bottom, { xy: xyLayout })
 }
 
+/* ---------------------------------------- flow (cycle / pipeline / stack) */
+
+const FLOW_VARIANT_ROTATION = ['primary', 'secondary', 'tertiary', 'accent'] as const
+
+/** Fill + readable text for a flow step, rotating variants when unset. */
+function flowFill(step: FlowStep, i: number): { fill: string; text: string } {
+  const variant = step.variant ?? FLOW_VARIANT_ROTATION[i % FLOW_VARIANT_ROTATION.length]
+  return variantFill[variant] ?? variantFill.secondary
+}
+
+/* Cycle metrics. */
+const CY_R = 158 // outer radius
+const CY_r = 96 // inner radius
+const CY_GAP_DEG = 3 // angular gap between segments
+const CY_TIP_DEG = 7 // arrowhead sweep at each segment's leading edge
+const CY_DETAIL_W = 170
+
+/** Point on a circle, angle in degrees clockwise from 12 o'clock. */
+function polar(cx: number, cy: number, r: number, deg: number): [number, number] {
+  const a = ((deg - 90) * Math.PI) / 180
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)]
+}
+
+const pt = ([x, y]: [number, number]) => `${+x.toFixed(2)} ${+y.toFixed(2)}`
+
+/**
+ * Cycle layout (PDCA, continuous improvement): steps become interlocking
+ * annular arrow segments running clockwise from 12 o'clock, with titles
+ * inside the ring, details just outside it, and an optional hub label.
+ */
+function layoutCycle(chart: OrgChart): Layout {
+  const steps = chart.flow?.steps ?? []
+  const oy = M.canvasPad + (chart.meta.showTitle && chart.meta.title.trim() ? 44 : 0)
+  const anyDetail = steps.some((s) => s.detail)
+  const padSide = anyDetail ? CY_DETAIL_W + 26 : 26
+  const padTop = anyDetail ? 56 : 20
+  const cx = M.canvasPad + padSide + CY_R
+  const cyc = oy + padTop + CY_R
+  const midR = (CY_R + CY_r) / 2
+
+  const n = Math.max(1, steps.length)
+  const seg = 360 / n
+  const stepLayouts: FlowStepLayout[] = steps.map((s, i) => {
+    const a0 = i * seg + CY_GAP_DEG / 2
+    const a1 = (i + 1) * seg - CY_GAP_DEG / 2
+    const largeArc = a1 - a0 > 180 ? 1 : 0
+    // Leading edge (a1) carries the arrow tip; the trailing edge (a0) carries
+    // the matching notch, so consecutive segments interlock like chevrons.
+    const path = [
+      `M ${pt(polar(cx, cyc, CY_R, a0))}`,
+      `A ${CY_R} ${CY_R} 0 ${largeArc} 1 ${pt(polar(cx, cyc, CY_R, a1))}`,
+      `L ${pt(polar(cx, cyc, midR, a1 + CY_TIP_DEG))}`,
+      `L ${pt(polar(cx, cyc, CY_r, a1))}`,
+      `A ${CY_r} ${CY_r} 0 ${largeArc} 0 ${pt(polar(cx, cyc, CY_r, a0))}`,
+      `L ${pt(polar(cx, cyc, midR, a0 + CY_TIP_DEG))}`,
+      'Z',
+    ].join(' ')
+    const mid = (a0 + a1) / 2 + CY_TIP_DEG / 2
+    const [labelX, labelY] = polar(cx, cyc, midR, mid)
+    const { fill, text } = flowFill(s, i)
+    const titleLines = wrapText(s.title, 12.5, CY_R - CY_r - 14, true).slice(0, 2)
+
+    let detail: FlowStepLayout['detail'] = null
+    if (s.detail) {
+      const lines = wrapText(s.detail, 10.5, CY_DETAIL_W)
+      const [dx, dy] = polar(cx, cyc, CY_R + 16, mid)
+      const rad = ((mid - 90) * Math.PI) / 180
+      const cos = Math.cos(rad)
+      const anchor = cos > 0.35 ? 'start' : cos < -0.35 ? 'end' : 'middle'
+      // Blocks above the ring grow upward so they never overlap it.
+      const above = Math.sin(rad) < -0.35
+      const y = above ? dy - (lines.length - 1) * 14 - 4 : dy + 8
+      detail = { lines, x: dx, y, anchor }
+    }
+    return { id: s.id, path, fill, text, titleLines, labelX, labelY, detail }
+  })
+
+  const hubText = chart.flow?.hub
+  const hub = hubText
+    ? { lines: wrapText(hubText, 13, CY_r * 2 - 40, true).slice(0, 3), x: cx, y: cyc }
+    : null
+
+  const flow: FlowLayout = { kind: 'cycle', steps: stepLayouts, hub }
+  return finishDataLayout(chart, cx + CY_R + padSide, cyc + CY_R + padTop, { flow })
+}
+
+/* Pipeline metrics. */
+const PL_H = 64
+const PL_TIP = 18
+const PL_GAP = 4
+const PL_MIN_W = 118
+const PL_MAX_W = 230
+
+/**
+ * Pipeline layout (DevSecOps, lifecycle phases): steps become left-to-right
+ * chevrons whose tips nest into the next stage's notch; details render under
+ * each stage.
+ */
+function layoutPipeline(chart: OrgChart): Layout {
+  const steps = chart.flow?.steps ?? []
+  const oy = M.canvasPad + (chart.meta.showTitle && chart.meta.title.trim() ? 44 : 0)
+  const y = oy + 12
+
+  let x = M.canvasPad
+  let bottom = y + PL_H
+  const stepLayouts: FlowStepLayout[] = steps.map((s, i) => {
+    const titleLines = wrapText(s.title, 13, PL_MAX_W - 46, true).slice(0, 2)
+    const w = Math.max(
+      PL_MIN_W,
+      Math.min(PL_MAX_W, Math.max(...titleLines.map((l) => textWidth(l, 13, true))) + 46),
+    )
+    const first = i === 0
+    // Flat left edge on the first stage; a notch everywhere else.
+    const path = [
+      `M ${x} ${y}`,
+      `L ${x + w} ${y}`,
+      `L ${x + w + PL_TIP} ${y + PL_H / 2}`,
+      `L ${x + w} ${y + PL_H}`,
+      `L ${x} ${y + PL_H}`,
+      ...(first ? [] : [`L ${x + PL_TIP} ${y + PL_H / 2}`]),
+      'Z',
+    ].join(' ')
+    const { fill, text } = flowFill(s, i)
+    // Center the label over the body, nudged right past the notch.
+    const labelX = x + (first ? 0 : PL_TIP / 2) + w / 2 + PL_TIP / 4
+
+    let detail: FlowStepLayout['detail'] = null
+    if (s.detail) {
+      const lines = wrapText(s.detail, 10.5, w + PL_TIP - 6)
+      detail = { lines, x: labelX, y: y + PL_H + 16, anchor: 'middle' }
+      bottom = Math.max(bottom, y + PL_H + 6 + lines.length * 14)
+    }
+    const out: FlowStepLayout = { id: s.id, path, fill, text, titleLines, labelX, labelY: y + PL_H / 2, detail }
+    x += w + PL_GAP
+    return out
+  })
+
+  const flow: FlowLayout = { kind: 'pipeline', steps: stepLayouts, hub: null }
+  return finishDataLayout(chart, x + PL_TIP, bottom, { flow })
+}
+
+/* Stack metrics. */
+const SK_MIN_W = 360
+const SK_MAX_W = 640
+const SK_GAP = 8
+const SK_PAD_Y = 12
+
+/**
+ * Stack layout (technology layers): steps become full-width rounded layers,
+ * first step on top, with the layer's contents on a muted line beneath its
+ * title.
+ */
+function layoutStack(chart: OrgChart): Layout {
+  const steps = chart.flow?.steps ?? []
+  const oy = M.canvasPad + (chart.meta.showTitle && chart.meta.title.trim() ? 44 : 0)
+  const x = M.canvasPad
+
+  const w = Math.max(
+    SK_MIN_W,
+    Math.min(
+      SK_MAX_W,
+      Math.max(
+        0,
+        ...steps.map((s) => textWidth(s.title, 14, true) + 60),
+        ...steps.map((s) => (s.detail ? textWidth(s.detail, 11) + 60 : 0)),
+      ),
+    ),
+  )
+
+  let y = oy + 8
+  const stepLayouts: FlowStepLayout[] = steps.map((s, i) => {
+    const titleLines = wrapText(s.title, 14, w - 40, true).slice(0, 2)
+    const detailLines = s.detail ? wrapText(s.detail, 11, w - 40) : []
+    const h = SK_PAD_Y * 2 + titleLines.length * 19 + (detailLines.length ? 4 + detailLines.length * 15 : 0)
+    const { fill, text } = flowFill(s, i)
+    const out: FlowStepLayout = {
+      id: s.id,
+      path: `M ${x + 8} ${y} H ${x + w - 8} Q ${x + w} ${y} ${x + w} ${y + 8} V ${y + h - 8} Q ${x + w} ${y + h} ${x + w - 8} ${y + h} H ${x + 8} Q ${x} ${y + h} ${x} ${y + h - 8} V ${y + 8} Q ${x} ${y} ${x + 8} ${y} Z`,
+      fill,
+      text,
+      titleLines,
+      labelX: x + w / 2,
+      labelY: y + SK_PAD_Y + (titleLines.length * 19) / 2,
+      detail: detailLines.length
+        ? { lines: detailLines, x: x + w / 2, y: y + SK_PAD_Y + titleLines.length * 19 + 12, anchor: 'middle' }
+        : null,
+    }
+    y += h + SK_GAP
+    return out
+  })
+
+  const flow: FlowLayout = { kind: 'stack', steps: stepLayouts, hub: null }
+  return finishDataLayout(chart, x + w, y - SK_GAP, { flow })
+}
+
 export function layoutChart(input: OrgChart): Layout {
   // WBS numbering is a view concern: bake outline numbers into titles on a copy
   // so the deterministic layout and exports need no structural change.
@@ -1907,6 +2131,9 @@ export function layoutChart(input: OrgChart): Layout {
   if (mode === 'table') return layoutTable(chart)
   if (mode === 'risk') return layoutRisk(chart)
   if (mode === 'xy') return layoutXY(chart)
+  if (mode === 'cycle') return layoutCycle(chart)
+  if (mode === 'pipeline') return layoutPipeline(chart)
+  if (mode === 'stack') return layoutStack(chart)
 
   const dir: Direction = chart.meta.direction ?? 'TB'
   const vertical = dir === 'TB' || dir === 'BT'
