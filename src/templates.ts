@@ -1740,6 +1740,190 @@ function techStack(): OrgChart {
   )
 }
 
+/* -------------------------------------------- free-form (architecture) */
+
+/** Template 34 — system / solution architecture: applications over shared
+ *  services over the data layer, inside an authorization boundary. */
+function systemArchitecture(): OrgChart {
+  const box = (
+    title: string,
+    x: number,
+    y: number,
+    width: number,
+    variant: OrgNode['variant'] = 'secondary',
+    shape?: OrgNode['shape'],
+  ): OrgNode => node({ title, variant, width, pos: { x, y }, ...(shape ? { shape } : {}) })
+
+  const users = box('Test Engineers & Analysts', 390, 40, 230, 'tertiary', 'pill')
+  const dash = box('Mission Dashboard', 140, 160, 180)
+  const sched = box('Test Scheduling', 420, 160, 170)
+  const report = box('Reporting & Analytics', 680, 160, 190)
+  const gateway = box('API Gateway', 280, 300, 170, 'primary')
+  const icam = box('Identity & Access (ICAM)', 560, 300, 210, 'primary')
+  const lake = box('Telemetry Data Lake', 150, 440, 190, 'secondary', 'cylinder')
+  const cmdb = box('Configuration DB', 440, 440, 180, 'secondary', 'cylinder')
+  const cloud = box('IL5 Cloud Services', 720, 440, 200, 'accent', 'cloud')
+
+  const edge = (fromId: string, toId: string, label?: string, dashed = false): OrgChart['comms'][number] => ({
+    id: uid('c'),
+    fromId,
+    toId,
+    arrow: 'end',
+    style: dashed ? 'dashed' : 'solid',
+    ...(label ? { label } : {}),
+  })
+
+  return {
+    version: 1,
+    meta: {
+      title: 'Solution Architecture',
+      showTitle: true,
+      layout: 'free',
+      caption:
+        'Open APIs between every layer: applications, services, and data evolve independently, and the whole stack runs inside the IL5 authorization boundary.',
+    },
+    roots: [node({ title: '', variant: 'hidden', children: [users, dash, sched, report, gateway, icam, lake, cmdb, cloud] })],
+    groups: [
+      { id: uid('g'), label: 'Mission applications', style: 'green', memberIds: [dash.id, sched.id, report.id] },
+      { id: uid('g'), label: 'Data layer', style: 'blue', memberIds: [lake.id, cmdb.id] },
+      { id: uid('g'), label: 'IL5 authorization boundary', style: 'dashed', memberIds: [gateway.id, icam.id, lake.id, cmdb.id, cloud.id] },
+    ],
+    comms: [
+      edge(users.id, dash.id, 'HTTPS'),
+      edge(users.id, report.id, 'HTTPS'),
+      edge(dash.id, gateway.id, 'REST'),
+      edge(sched.id, gateway.id, 'REST'),
+      edge(report.id, icam.id, 'OIDC'),
+      edge(gateway.id, lake.id, 'query'),
+      edge(gateway.id, cmdb.id, 'read/write'),
+      edge(lake.id, cloud.id, 'hosted on', true),
+      edge(cmdb.id, cloud.id, 'hosted on', true),
+    ],
+    legend: [
+      { id: uid('l'), marker: 'boxPrimary', label: 'Shared services' },
+      { id: uid('l'), marker: 'boxSecondary', label: 'Mission systems & data' },
+      { id: uid('l'), marker: 'dashed', label: 'Authorization boundary' },
+    ],
+  }
+}
+
+/** Template 35 — network topology: boundary, core, and enclave tiers. */
+function networkTopology(): OrgChart {
+  const box = (
+    title: string,
+    x: number,
+    y: number,
+    width: number,
+    variant: OrgNode['variant'] = 'secondary',
+    shape?: OrgNode['shape'],
+  ): OrgNode => node({ title, variant, width, pos: { x, y }, ...(shape ? { shape } : {}) })
+
+  const wan = box('DREN / NIPRNet', 400, 30, 210, 'accent', 'cloud')
+  const fw = box('Boundary Firewall', 415, 170, 180, 'primary')
+  const core = box('Core Switch', 420, 290, 170, 'primary')
+  const cellA = box('Test Cell Switch A', 120, 410, 180)
+  const cellB = box('Test Cell Switch B', 420, 410, 180)
+  const dmz = box('DMZ Switch', 720, 410, 160)
+  const daq = box('DAQ Servers', 115, 530, 190, 'secondary', 'cylinder')
+  const ops = box('Ops Workstations', 425, 530, 170, 'tertiary')
+  const remote = box('Remote Access / VPN', 705, 530, 190, 'tertiary')
+
+  const link = (fromId: string, toId: string, label?: string): OrgChart['comms'][number] => ({
+    id: uid('c'),
+    fromId,
+    toId,
+    arrow: 'none',
+    style: 'solid',
+    ...(label ? { label } : {}),
+  })
+
+  return {
+    version: 1,
+    meta: {
+      title: 'Network Topology',
+      showTitle: true,
+      layout: 'free',
+      caption:
+        'A single accredited boundary: every path from the WAN to a test cell crosses the firewall and core, and the DMZ isolates remote access from mission traffic.',
+    },
+    roots: [node({ title: '', variant: 'hidden', children: [wan, fw, core, cellA, cellB, dmz, daq, ops, remote] })],
+    groups: [
+      { id: uid('g'), label: 'IL5 enclave', style: 'dashed', memberIds: [core.id, cellA.id, cellB.id, daq.id, ops.id] },
+    ],
+    comms: [
+      link(wan.id, fw.id, 'encrypted'),
+      link(fw.id, core.id, '10 GbE'),
+      link(core.id, cellA.id, '10 GbE'),
+      link(core.id, cellB.id, '10 GbE'),
+      link(fw.id, dmz.id),
+      link(cellA.id, daq.id),
+      link(cellB.id, ops.id),
+      link(dmz.id, remote.id, 'VPN'),
+    ],
+    legend: [
+      { id: uid('l'), marker: 'boxPrimary', label: 'Boundary & core' },
+      { id: uid('l'), marker: 'boxSecondary', label: 'Enclave switching & servers' },
+      { id: uid('l'), marker: 'boxTertiary', label: 'End devices' },
+      { id: uid('l'), marker: 'dashed', label: 'Accreditation boundary' },
+    ],
+  }
+}
+
+/** Template 36 — data flow diagram: external entities, processes, a decision
+ *  gate, and data stores with labeled flows. */
+function dataFlow(): OrgChart {
+  const box = (
+    title: string,
+    x: number,
+    y: number,
+    width: number,
+    variant: OrgNode['variant'] = 'secondary',
+    shape?: OrgNode['shape'],
+  ): OrgNode => node({ title, variant, width, pos: { x, y }, ...(shape ? { shape } : {}) })
+
+  const conductor = box('Test Conductor', 40, 230, 170, 'tertiary', 'pill')
+  const acquire = box('1.0 Acquire Telemetry', 300, 90, 200, 'primary')
+  const process = box('2.0 Process & Validate', 300, 380, 200, 'primary')
+  const gate = box('QA Gate', 590, 230, 160, 'accent', 'diamond')
+  const archive = box('D1 · Telemetry Archive', 850, 90, 200, 'secondary', 'cylinder')
+  const cor = box('Customer COR', 860, 390, 170, 'tertiary', 'pill')
+
+  const flow = (fromId: string, toId: string, label: string, dashed = false): OrgChart['comms'][number] => ({
+    id: uid('c'),
+    fromId,
+    toId,
+    arrow: 'end',
+    style: dashed ? 'dashed' : 'solid',
+    label,
+  })
+
+  return {
+    version: 1,
+    meta: {
+      title: 'Telemetry Data Flow',
+      showTitle: true,
+      layout: 'free',
+      caption:
+        'No data reaches the archive or the customer without passing the QA gate — exceptions route back with full provenance, so the record of test is always defensible.',
+    },
+    roots: [node({ title: '', variant: 'hidden', children: [conductor, acquire, process, gate, archive, cor] })],
+    groups: [],
+    comms: [
+      flow(conductor.id, acquire.id, 'test configuration'),
+      flow(acquire.id, process.id, 'raw frames'),
+      flow(process.id, gate.id, 'validated set'),
+      flow(gate.id, archive.id, 'accepted data'),
+      flow(gate.id, process.id, 'rework', true),
+      flow(archive.id, cor.id, 'monthly extract'),
+    ],
+    legend: [
+      { id: uid('l'), marker: 'boxPrimary', label: 'Process' },
+      { id: uid('l'), marker: 'boxTertiary', label: 'External entity' },
+      { id: uid('l'), marker: 'boxAccent', label: 'Decision gate' },
+    ],
+  }
+}
+
 export const templates: { key: string; label: string; build: () => OrgChart }[] = [
   { key: 'simple-hierarchy', label: 'Simple Hierarchy (clean top-down)', build: simpleHierarchy },
   { key: 'functional-divisions', label: 'Functional Divisions (department stacks)', build: functionalDivisions },
@@ -1752,6 +1936,9 @@ export const templates: { key: string; label: string; build: () => OrgChart }[] 
   { key: 'pdca', label: 'Continuous Improvement (PDCA cycle)', build: pdcaCycle },
   { key: 'devsecops', label: 'DevSecOps Pipeline (chevrons)', build: devSecOpsPipeline },
   { key: 'tech-stack', label: 'Technology Stack (layers)', build: techStack },
+  { key: 'sys-arch', label: 'Solution Architecture (free-form)', build: systemArchitecture },
+  { key: 'network', label: 'Network Topology (free-form)', build: networkTopology },
+  { key: 'data-flow', label: 'Data Flow Diagram (free-form)', build: dataFlow },
   { key: 'current-future', label: 'Current vs. Future State', build: currentVsFuture },
   { key: 'wbs', label: 'Work Breakdown Structure (numbered)', build: wbs },
   { key: 'teaming', label: 'Teaming & Workshare (prime / subs)', build: teaming },
