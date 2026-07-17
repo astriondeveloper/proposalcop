@@ -1,5 +1,16 @@
-import type { CellStatus, CommLink, Direction, Group, LegendItem, OrgChart, OrgNode, RefKind } from './model'
-import { clone, visit, wbsNumbers } from './model'
+import type {
+  CellStatus,
+  CommLink,
+  Direction,
+  Group,
+  LegendItem,
+  OrgChart,
+  OrgNode,
+  RefKind,
+  RiskItem,
+  RiskLevel,
+} from './model'
+import { clone, riskLevel, visit, wbsNumbers } from './model'
 import { computeCompliance, REF_KIND_LABEL } from './compliance'
 import { metrics as M, readableText, variantFill } from './theme'
 
@@ -161,6 +172,42 @@ export interface TableLayout {
   rows: TableRowLayout[]
 }
 
+/** One marker on the risk cube: the current position, plus the residual
+ *  (post-mitigation) position and connecting arrow when one is set. */
+export interface RiskMarkerLayout {
+  id: string
+  code: string
+  title: string
+  cx: number
+  cy: number
+  level: RiskLevel
+  residual?: { cx: number; cy: number; level: RiskLevel }
+}
+
+/** One row in the risk-register panel beside the cube. */
+export interface RiskListRow {
+  code: string
+  title: string
+  /** Position summary, e.g. "L4·C4 → L2·C3". */
+  move: string
+  level: RiskLevel
+  y: number
+}
+
+/** Geometry for the 'risk' layout: a 5×5 likelihood × consequence heatmap. */
+export interface RiskCubeLayout {
+  x: number
+  y: number
+  cellSize: number
+  cells: { row: number; col: number; x: number; y: number; level: RiskLevel }[]
+  markers: RiskMarkerLayout[]
+  xLabel: string
+  yLabel: string
+  plotW: number
+  plotH: number
+  panel: { x: number; y: number; w: number; h: number; rows: RiskListRow[] } | null
+}
+
 export interface Layout {
   placed: PlacedNode[]
   /** Reporting-line connector paths. */
@@ -174,6 +221,8 @@ export interface Layout {
   timeline: TimelineLayout | null
   /** Table geometry when the 'table' layout is active. */
   table: TableLayout | null
+  /** Risk-cube geometry when the 'risk' layout is active. */
+  risk: RiskCubeLayout | null
   caption: CaptionLayout | null
   /** Classification / CUI marking text, rendered as top + bottom banners. */
   banner: string | null
@@ -484,6 +533,47 @@ const CPANEL_MAX_GAPS = 12
 // noticeable overshoot.
 const TITLE_BAR_SCALE = 0.9
 
+/** The chart headline (all-caps, size 20 bold) with its accent-bar width, or
+ *  null when the title is hidden/empty. Shared by every layout strategy. */
+function titleBlock(chart: OrgChart): Layout['title'] {
+  if (!(chart.meta.showTitle && chart.meta.title.trim())) return null
+  return {
+    text: chart.meta.title,
+    x: M.canvasPad,
+    y: M.canvasPad + 22,
+    w: textWidth(chart.meta.title.toUpperCase(), 20, true) * TITLE_BAR_SCALE,
+  }
+}
+
+/** Shared tail for the data layouts (timeline / table / risk / xy): wraps the
+ *  caption, computes the canvas bounds, and fills the node-layout fields with
+ *  empty defaults. `parts` carries the layout-specific geometry. */
+function finishDataLayout(
+  chart: OrgChart,
+  contentRight: number,
+  contentBottom: number,
+  parts: Partial<Layout>,
+): Layout {
+  const caption = captionLayout(chart, contentRight - M.canvasPad, contentBottom)
+  return {
+    placed: [],
+    connectors: [],
+    zones: [],
+    comms: [],
+    legend: null,
+    title: titleBlock(chart),
+    compliance: null,
+    timeline: null,
+    table: null,
+    risk: null,
+    caption,
+    banner: chart.meta.banner ?? null,
+    width: Math.max(contentRight, caption ? caption.x + caption.w : 0) + M.canvasPad,
+    height: (caption ? caption.y + caption.h : contentBottom) + M.canvasPad,
+    ...parts,
+  }
+}
+
 /** Shared tail: build zones, edges, legend, title, and bounds from already
  *  positioned boxes + connectors. Used by every layout strategy. */
 function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): Layout {
@@ -555,15 +645,7 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
 
   // Headlines render all-caps at size 20 bold; measure that so the accent bar
   // (and the canvas) can size to the actual title width.
-  const title =
-    chart.meta.showTitle && chart.meta.title.trim()
-      ? {
-          text: chart.meta.title,
-          x: M.canvasPad,
-          y: M.canvasPad + 22,
-          w: textWidth(chart.meta.title.toUpperCase(), 20, true) * TITLE_BAR_SCALE,
-        }
-      : null
+  const title = titleBlock(chart)
 
   // On-chart compliance overlay (opt-in): a coverage/gaps panel placed under
   // the content so it grows the canvas like the legend, plus the node ids the
@@ -622,6 +704,7 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
     compliance,
     timeline: null,
     table: null,
+    risk: null,
     caption,
     banner: chart.meta.banner ?? null,
     width,
@@ -1228,16 +1311,6 @@ function layoutTimeline(chart: OrgChart): Layout {
   const ticks = tickUnits.map((u) => ({ x: at(u), label: `${abbr}${u}` }))
 
   const bottom = bars.length ? bars[bars.length - 1].y + TL_ROW_H : top + TL_ROW_H
-  const title =
-    chart.meta.showTitle && chart.meta.title.trim()
-      ? {
-          text: chart.meta.title,
-          x: M.canvasPad,
-          y: M.canvasPad + 22,
-          w: textWidth(chart.meta.title.toUpperCase(), 20, true) * TITLE_BAR_SCALE,
-        }
-      : null
-
   const timeline: TimelineLayout = {
     gutter,
     plotX,
@@ -1253,22 +1326,7 @@ function layoutTimeline(chart: OrgChart): Layout {
     unit,
     span,
   }
-  const caption = captionLayout(chart, plotX + plotW - M.canvasPad, bottom)
-  return {
-    placed: [],
-    connectors: [],
-    zones: [],
-    comms: [],
-    legend: null,
-    title,
-    compliance: null,
-    timeline,
-    table: null,
-    caption,
-    banner: chart.meta.banner ?? null,
-    width: Math.max(plotX + plotW, caption ? caption.x + caption.w : 0) + M.canvasPad,
-    height: (caption ? caption.y + caption.h : bottom) + M.canvasPad,
-  }
+  return finishDataLayout(chart, plotX + plotW, bottom, { timeline })
 }
 
 /* ------------------------------------------------------------------ table */
@@ -1288,36 +1346,9 @@ const TBL_ROW_MIN = 26
 function layoutTable(chart: OrgChart): Layout {
   const oy = M.canvasPad + (chart.meta.showTitle && chart.meta.title.trim() ? 44 : 0)
   const ox = M.canvasPad
-  const title =
-    chart.meta.showTitle && chart.meta.title.trim()
-      ? {
-          text: chart.meta.title,
-          x: M.canvasPad,
-          y: M.canvasPad + 22,
-          w: textWidth(chart.meta.title.toUpperCase(), 20, true) * TITLE_BAR_SCALE,
-        }
-      : null
 
   const table = chart.table
-  const empty = (bottom: number, right: number): Layout => {
-    const caption = captionLayout(chart, right - M.canvasPad, bottom)
-    return {
-      placed: [],
-      connectors: [],
-      zones: [],
-      comms: [],
-      legend: null,
-      title,
-      compliance: null,
-      timeline: null,
-      table: null,
-      caption,
-      banner: chart.meta.banner ?? null,
-      width: Math.max(right, caption ? caption.x + caption.w : 0) + M.canvasPad,
-      height: (caption ? caption.y + caption.h : bottom) + M.canvasPad,
-    }
-  }
-  if (!table || !table.columns.length) return empty(oy + 40, ox + 200)
+  if (!table || !table.columns.length) return finishDataLayout(chart, ox + 200, oy + 40, {})
 
   const cols = table.columns
   const colW = cols.map((c, ci) => {
@@ -1381,23 +1412,142 @@ function layoutTable(chart: OrgChart): Layout {
     columns,
     rows,
   }
+  return finishDataLayout(chart, ox + totalW, tableBottom, { table: tableLayout })
+}
 
-  const caption = captionLayout(chart, totalW, tableBottom)
-  return {
-    placed: [],
-    connectors: [],
-    zones: [],
-    comms: [],
-    legend: null,
-    title,
-    compliance: null,
-    timeline: null,
-    table: tableLayout,
-    caption,
-    banner: chart.meta.banner ?? null,
-    width: Math.max(ox + totalW, caption ? caption.x + caption.w : 0) + M.canvasPad,
-    height: (caption ? caption.y + caption.h : tableBottom) + M.canvasPad,
+/* ------------------------------------------------------------- risk cube */
+
+const RC_CELL = 72 // cell size (px)
+const RC_AXIS = 46 // gutter for axis numbers + rotated axis title
+const RC_PANEL_GAP = 26
+const RC_ROW_H = 21
+const RC_PANEL_MAX_W = 380
+
+/** Resolve a risk's marker code: its own, or an auto number by register order. */
+function riskCode(r: RiskItem, i: number): string {
+  return r.code?.trim() || `R${i + 1}`
+}
+
+/**
+ * 5×5 risk cube. Likelihood runs 1 (bottom) to 5 (top), consequence 1 (left)
+ * to 5 (right); cells are tinted by the standard risk matrix. Each risk drops
+ * a marker at its (L, C) cell; a residual position adds an open marker and a
+ * mitigation arrow. Markers sharing a cell spread over a deterministic
+ * mini-grid so they never overlap. A register panel lists every risk.
+ */
+function layoutRisk(chart: OrgChart): Layout {
+  const oy = M.canvasPad + (chart.meta.showTitle && chart.meta.title.trim() ? 44 : 0)
+  const x0 = M.canvasPad + RC_AXIS
+  const y0 = oy + 8
+  const plotW = RC_CELL * 5
+  const plotH = RC_CELL * 5
+
+  const cells: RiskCubeLayout['cells'] = []
+  for (let L = 1; L <= 5; L++) {
+    for (let C = 1; C <= 5; C++) {
+      cells.push({
+        row: L,
+        col: C,
+        x: x0 + (C - 1) * RC_CELL,
+        y: y0 + (5 - L) * RC_CELL, // likelihood 5 at the top
+        level: riskLevel(L, C),
+      })
+    }
   }
+
+  const risks = chart.risk?.risks ?? []
+
+  // Deterministic anti-overlap: bucket every point (current + residual) into
+  // its cell, then spread each cell's points over a centered √n × √n grid.
+  type Point = { riskIdx: number; residual: boolean; L: number; C: number }
+  const points: Point[] = []
+  risks.forEach((r, i) => {
+    points.push({ riskIdx: i, residual: false, L: r.likelihood, C: r.consequence })
+    if (r.residual) points.push({ riskIdx: i, residual: true, L: r.residual.likelihood, C: r.residual.consequence })
+  })
+  const byCell = new Map<string, Point[]>()
+  for (const p of points) {
+    const key = `${p.L}:${p.C}`
+    ;(byCell.get(key) ?? byCell.set(key, []).get(key)!).push(p)
+  }
+  const posOf = new Map<Point, { cx: number; cy: number }>()
+  for (const bucket of byCell.values()) {
+    const g = Math.ceil(Math.sqrt(bucket.length))
+    bucket.forEach((p, k) => {
+      const col = k % g
+      const row = Math.floor(k / g)
+      // Rows used may be fewer than g; center the occupied block vertically.
+      const rowsUsed = Math.ceil(bucket.length / g)
+      const cellX = x0 + (p.C - 1) * RC_CELL
+      const cellY = y0 + (5 - p.L) * RC_CELL
+      posOf.set(p, {
+        cx: cellX + ((col + 1) * RC_CELL) / (g + 1),
+        cy: cellY + ((row + 1) * RC_CELL) / (rowsUsed + 1),
+      })
+    })
+  }
+
+  const markers: RiskMarkerLayout[] = risks.map((r, i) => {
+    const cur = points.find((p) => p.riskIdx === i && !p.residual)!
+    const curPos = posOf.get(cur)!
+    const m: RiskMarkerLayout = {
+      id: r.id,
+      code: riskCode(r, i),
+      title: r.title,
+      cx: curPos.cx,
+      cy: curPos.cy,
+      level: riskLevel(r.likelihood, r.consequence),
+    }
+    if (r.residual) {
+      const res = points.find((p) => p.riskIdx === i && p.residual)!
+      const resPos = posOf.get(res)!
+      m.residual = { cx: resPos.cx, cy: resPos.cy, level: riskLevel(r.residual.likelihood, r.residual.consequence) }
+    }
+    return m
+  })
+
+  // Register panel to the right of the cube: code, title, and the move.
+  let panel: RiskCubeLayout['panel'] = null
+  if (risks.length) {
+    const moveOf = (r: RiskItem) =>
+      `L${r.likelihood}·C${r.consequence}${r.residual ? ` → L${r.residual.likelihood}·C${r.residual.consequence}` : ''}`
+    const rows: RiskListRow[] = risks.map((r, i) => ({
+      code: riskCode(r, i),
+      title: r.title,
+      move: moveOf(r),
+      level: riskLevel(r.likelihood, r.consequence),
+      y: 0, // filled below once the panel origin is known
+    }))
+    const widest = Math.max(
+      textWidth('Risk Register', 12, true),
+      ...risks.map(
+        (r, i) => textWidth(`${riskCode(r, i)}  ${r.title}`, 11) + textWidth(moveOf(r), 10.5) + 40,
+      ),
+    )
+    const w = Math.min(RC_PANEL_MAX_W, Math.max(220, widest + 24))
+    const h = 12 * 2 + 18 + rows.length * RC_ROW_H
+    const px = x0 + plotW + RC_PANEL_GAP
+    rows.forEach((row, i) => {
+      row.y = y0 + 12 + 18 + i * RC_ROW_H + 14
+    })
+    panel = { x: px, y: y0, w, h, rows }
+  }
+
+  const risk: RiskCubeLayout = {
+    x: x0,
+    y: y0,
+    cellSize: RC_CELL,
+    cells,
+    markers,
+    xLabel: chart.risk?.xLabel ?? 'Consequence',
+    yLabel: chart.risk?.yLabel ?? 'Likelihood',
+    plotW,
+    plotH,
+    panel,
+  }
+  const right = panel ? panel.x + panel.w : x0 + plotW
+  const bottom = Math.max(y0 + plotH + RC_AXIS, panel ? panel.y + panel.h : 0)
+  return finishDataLayout(chart, right, bottom, { risk })
 }
 
 export function layoutChart(input: OrgChart): Layout {
@@ -1411,6 +1561,7 @@ export function layoutChart(input: OrgChart): Layout {
   if (mode === 'swimlane') return layoutSwimlane(chart)
   if (mode === 'timeline') return layoutTimeline(chart)
   if (mode === 'table') return layoutTable(chart)
+  if (mode === 'risk') return layoutRisk(chart)
 
   const dir: Direction = chart.meta.direction ?? 'TB'
   const vertical = dir === 'TB' || dir === 'BT'

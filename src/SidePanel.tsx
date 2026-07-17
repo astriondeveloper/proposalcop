@@ -13,6 +13,8 @@ import type {
   OrgNode,
   RefKind,
   Requirement,
+  RiskCube,
+  RiskItem,
   SchedulePhase,
   TableDef,
   Variant,
@@ -31,6 +33,7 @@ import {
   moveNode,
   normalizeChart,
   REF_KINDS,
+  riskLevel,
   setNodePos,
   tableAddColumn,
   tableAddRow,
@@ -106,6 +109,7 @@ const LAYOUT_MODES: { value: LayoutMode; label: string }[] = [
   { value: 'swimlane', label: 'Swimlane (lanes by group)' },
   { value: 'timeline', label: 'Timeline (transition schedule)' },
   { value: 'table', label: 'Table (RACI, crosswalk, QASP…)' },
+  { value: 'risk', label: 'Risk Cube (5×5 heatmap)' },
 ]
 
 const DIRECTIONS: { value: Direction; label: string }[] = [
@@ -600,6 +604,166 @@ function TableEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
   )
 }
 
+const SCALE_1_TO_5 = [1, 2, 3, 4, 5]
+
+/** A starter register for a chart that just switched to the risk layout. */
+function starterRiskCube(): RiskCube {
+  return {
+    risks: [
+      {
+        id: uid('r'),
+        title: 'New risk',
+        likelihood: 4,
+        consequence: 4,
+        residual: { likelihood: 2, consequence: 3 },
+      },
+    ],
+  }
+}
+
+/** Visual editor for the 'risk' layout: the risk register with likelihood /
+ *  consequence positions and optional post-mitigation (residual) targets. */
+function RiskEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
+  const cube = chart.risk
+  const setCube = (next: RiskCube) => onChange({ ...chart, risk: next })
+
+  if (!cube) {
+    return (
+      <div className="editor">
+        <p className="hint">This chart uses the risk-cube layout but has no risks yet.</p>
+        <button onClick={() => setCube(starterRiskCube())}>Create a starter register</button>
+      </div>
+    )
+  }
+
+  const patchRisk = (i: number, p: Partial<RiskItem>) => {
+    const next = clone(cube)
+    next.risks[i] = { ...next.risks[i], ...p }
+    if (p.residual === undefined && 'residual' in p) delete next.risks[i].residual
+    setCube(next)
+  }
+  const moveRisk = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= cube.risks.length) return
+    const next = clone(cube)
+    ;[next.risks[i], next.risks[j]] = [next.risks[j], next.risks[i]]
+    setCube(next)
+  }
+
+  const scaleSelect = (
+    label: string,
+    value: number,
+    onPick: (v: number) => void,
+  ) => (
+    <label>{label}
+      <select value={value} onChange={(e) => onPick(Number(e.target.value))}>
+        {SCALE_1_TO_5.map((v) => <option key={v} value={v}>{v}</option>)}
+      </select>
+    </label>
+  )
+
+  return (
+    <div className="editor">
+      <div className="two-col">
+        <label>X axis label
+          <input
+            value={cube.xLabel ?? ''}
+            placeholder="Consequence"
+            onChange={(e) => setCube({ ...clone(cube), xLabel: e.target.value || undefined })}
+          />
+        </label>
+        <label>Y axis label
+          <input
+            value={cube.yLabel ?? ''}
+            placeholder="Likelihood"
+            onChange={(e) => setCube({ ...clone(cube), yLabel: e.target.value || undefined })}
+          />
+        </label>
+      </div>
+
+      <fieldset>
+        <legend>Risk register ({cube.risks.length})</legend>
+        {cube.risks.length === 0 && <p className="hint">No risks yet — add the first one below.</p>}
+        {cube.risks.map((r, i) => {
+          const level = riskLevel(r.likelihood, r.consequence)
+          const residualLevel = r.residual ? riskLevel(r.residual.likelihood, r.residual.consequence) : null
+          return (
+            <div key={r.id} className="card">
+              <div className="detail-row">
+                <input
+                  className="risk-code"
+                  value={r.code ?? ''}
+                  placeholder={`R${i + 1}`}
+                  aria-label="Risk code"
+                  title="Marker label on the cube (blank = auto-numbered)"
+                  onChange={(e) => patchRisk(i, { code: e.target.value || undefined })}
+                />
+                <span className={`risk-pill lvl-${level}`}>{level}</span>
+                <button className="sm" title="Move up" disabled={i === 0} onClick={() => moveRisk(i, -1)}>↑</button>
+                <button className="sm" title="Move down" disabled={i === cube.risks.length - 1} onClick={() => moveRisk(i, 1)}>↓</button>
+                <button
+                  className="danger sm"
+                  aria-label={`Remove risk ${r.code || i + 1}`}
+                  onClick={() => setCube({ ...clone(cube), risks: cube.risks.filter((_, j) => j !== i) })}
+                >×</button>
+              </div>
+              <input
+                value={r.title}
+                placeholder="Risk description"
+                aria-label="Risk title"
+                onChange={(e) => patchRisk(i, { title: e.target.value })}
+              />
+              <div className="two-col">
+                {scaleSelect('Likelihood (1–5)', r.likelihood, (v) => patchRisk(i, { likelihood: v }))}
+                {scaleSelect('Consequence (1–5)', r.consequence, (v) => patchRisk(i, { consequence: v }))}
+              </div>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={!!r.residual}
+                  onChange={(e) =>
+                    patchRisk(i, {
+                      residual: e.target.checked
+                        ? { likelihood: Math.max(1, r.likelihood - 2), consequence: Math.max(1, r.consequence - 1) }
+                        : undefined,
+                    })
+                  }
+                />
+                Mitigated (residual) position — draws an arrow
+              </label>
+              {r.residual && (
+                <div className="two-col">
+                  {scaleSelect('Residual likelihood', r.residual.likelihood, (v) =>
+                    patchRisk(i, { residual: { ...r.residual!, likelihood: v } }),
+                  )}
+                  {scaleSelect('Residual consequence', r.residual.consequence, (v) =>
+                    patchRisk(i, { residual: { ...r.residual!, consequence: v } }),
+                  )}
+                </div>
+              )}
+              {residualLevel && (
+                <p className="hint">Mitigation moves this risk from <b>{level}</b> to <b>{residualLevel}</b>.</p>
+              )}
+            </div>
+          )
+        })}
+        <button
+          onClick={() =>
+            setCube({
+              ...clone(cube),
+              risks: [...cube.risks, { id: uid('r'), title: '', likelihood: 3, consequence: 3 }],
+            })
+          }
+        >+ Risk</button>
+      </fieldset>
+      <p className="hint">
+        Cell colors follow the standard 5×5 risk matrix (green / amber / red). Markers are
+        auto-numbered R1, R2… in register order unless a code is set.
+      </p>
+    </div>
+  )
+}
+
 function ChartEditor({ chart, onChange, onSelect }: Props) {
   const nodes = allNodes(chart)
   const options = nodes
@@ -680,9 +844,10 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           onChange={(e) => {
             const layout = e.target.value as LayoutMode
             const next = { ...chart, meta: { ...chart.meta, layout } }
-            // Seed an empty grid when switching to a data layout for the first
-            // time, so the canvas (and its editor tab) has something to show.
+            // Seed starter content when switching to a data layout for the
+            // first time, so the canvas (and its editor tab) has something to show.
             if (layout === 'table' && !chart.table) next.table = emptyTable()
+            if (layout === 'risk' && !chart.risk) next.risk = starterRiskCube()
             onChange(next)
           }}
         >
@@ -692,6 +857,11 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
       {chart.meta.layout === 'table' && (
         <p className="hint">
           This is a table. Edit its columns, rows and cell statuses in the <b>Table</b> tab.
+        </p>
+      )}
+      {chart.meta.layout === 'risk' && (
+        <p className="hint">
+          This is a 5×5 risk cube. Edit the risk register in the <b>Risks</b> tab.
         </p>
       )}
       <label>Flow direction
@@ -1353,9 +1523,10 @@ export function SidePanel({
   const [tab, setTab] = useState<'build' | 'chart' | 'compliance' | 'library' | 'json'>('build')
 
   // The first tab edits the chart's content, so it follows the layout mode:
-  // boxes for node layouts, the grid editor for tables. Its label matches.
+  // boxes for node layouts, the grid editor for tables, the register for risk
+  // cubes. Its label matches.
   const layoutMode = props.chart.meta.layout ?? 'tree'
-  const buildLabel = layoutMode === 'table' ? 'Table' : 'Boxes'
+  const buildLabel = layoutMode === 'table' ? 'Table' : layoutMode === 'risk' ? 'Risks' : 'Boxes'
 
   // Selecting a box anywhere (including clicking it in the chart) jumps the
   // panel to the Boxes tab so its editor and tree row are shown immediately.
@@ -1381,6 +1552,8 @@ export function SidePanel({
       {tab === 'build' &&
         (layoutMode === 'table' ? (
           <TableEditor chart={props.chart} onChange={props.onChange} />
+        ) : layoutMode === 'risk' ? (
+          <RiskEditor chart={props.chart} onChange={props.onChange} />
         ) : (
           <>
             <NodeTree chart={props.chart} selectedId={props.selectedId} onSelect={props.onSelect} />

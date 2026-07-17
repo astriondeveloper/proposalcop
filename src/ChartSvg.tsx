@@ -5,7 +5,7 @@ import type { ComplianceOverlay, Layout, PlacedNode } from './layout'
 import { REF_KIND_LABEL } from './compliance'
 import { edgeArrow } from './model'
 import type { BadgeType, LegendMarker } from './model'
-import { brand, metrics as M, readableText, variantFill, zoneFill } from './theme'
+import { brand, metrics as M, readableText, riskFill, variantFill, zoneFill } from './theme'
 
 /* Compliance overlay colors (brand Refraction / Twilight), inlined so the
  * exported SVG stays self-contained. */
@@ -463,7 +463,7 @@ function BannerBars({ text, width, height }: { text: string; width: number; heig
  *  quarter-span ticks, dashed phase markers, task bars, and milestone diamonds. */
 function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
   const tl = layout.timeline!
-  const { width, height, title } = layout
+  const { width, height } = layout
   const pad = M.canvasPad
   const plotRight = tl.plotX + tl.plotW
   const plotBottom = tl.bars.length ? tl.bars[tl.bars.length - 1].y + tl.rowH : tl.top + tl.rowH
@@ -561,16 +561,7 @@ function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string
         )
       })}
 
-      {title && (
-        <g>
-          <text x={title.x} y={title.y} fontSize={20} fontWeight={700} fill={brand.heading} fontFamily={brand.fontFamily}>
-            {title.text.toUpperCase()}
-          </text>
-          <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
-        </g>
-      )}
-      {layout.caption && <CaptionText caption={layout.caption} />}
-      {layout.banner && <BannerBars text={layout.banner} width={width} height={height} />}
+      <ChartChrome layout={layout} />
     </svg>
   )
 }
@@ -589,7 +580,7 @@ const TBL_SECTION = '#ECE9F5'
 /** Branded data-table renderer (RACI, crosswalks, QASP/SLA, comparisons). */
 function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
   const t = layout.table!
-  const { width, height, title } = layout
+  const { width, height } = layout
   const padX = 10
   const lineH = 15
   const bodyBottom = t.rows.length ? t.rows[t.rows.length - 1].y + t.rows[t.rows.length - 1].h : t.y + t.headerH
@@ -696,6 +687,17 @@ function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string })
       {/* Outer border. */}
       <rect x={t.x} y={t.y} width={t.totalW} height={bodyBottom - t.y} fill="none" stroke="#BDBDBD" strokeWidth={1} />
 
+      <ChartChrome layout={layout} />
+    </svg>
+  )
+}
+
+/** Title + accent bar, caption, and classification banners — the shared chrome
+ *  every data-layout renderer (timeline / table / risk / xy) draws on top. */
+function ChartChrome({ layout }: { layout: Layout }) {
+  const { title, caption, banner, width, height } = layout
+  return (
+    <>
       {title && (
         <g>
           <text x={title.x} y={title.y} fontSize={20} fontWeight={700} fill={brand.heading} fontFamily={brand.fontFamily}>
@@ -704,8 +706,171 @@ function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string })
           <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
         </g>
       )}
-      {layout.caption && <CaptionText caption={layout.caption} />}
-      {layout.banner && <BannerBars text={layout.banner} width={width} height={height} />}
+      {caption && <CaptionText caption={caption} />}
+      {banner && <BannerBars text={banner} width={width} height={height} />}
+    </>
+  )
+}
+
+/* Risk-marker ink: current markers are Force purple with white text; residual
+ * markers are open (white) circles with a Force outline. */
+const RISK_MARKER = brand.comm
+const RISK_GRID_GAP = 2.5
+
+/** 5×5 risk-cube renderer: tinted matrix cells, axis scales + titles, current
+ *  and residual markers with mitigation arrows, and the register panel. */
+function RiskSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
+  const rc = layout.risk!
+  const { width, height } = layout
+  const cs = rc.cellSize
+  const R = 11 // marker radius
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fontFamily={brand.fontFamily}
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <defs>
+        <linearGradient id="skyGradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={brand.skyGradient[0]} />
+          <stop offset="50%" stopColor={brand.skyGradient[1]} />
+          <stop offset="100%" stopColor={brand.skyGradient[2]} />
+        </linearGradient>
+        <marker id="riskArrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+          <path d="M 0 0 L 7 4 L 0 8 Z" fill={RISK_MARKER} />
+        </marker>
+      </defs>
+      <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+
+      {/* Matrix cells (small white gaps read as the grid). */}
+      {rc.cells.map((c) => (
+        <rect
+          key={`${c.row}-${c.col}`}
+          x={c.x + RISK_GRID_GAP / 2}
+          y={c.y + RISK_GRID_GAP / 2}
+          width={cs - RISK_GRID_GAP}
+          height={cs - RISK_GRID_GAP}
+          rx={3}
+          fill={riskFill[c.level]}
+        />
+      ))}
+
+      {/* Axis scales: consequence 1–5 along the bottom, likelihood 1–5 up the left. */}
+      {[1, 2, 3, 4, 5].map((v) => (
+        <g key={`ax-${v}`} fontSize={11} fill={brand.detailText}>
+          <text x={rc.x + (v - 0.5) * cs} y={rc.y + rc.plotH + 16} textAnchor="middle">
+            {v}
+          </text>
+          <text x={rc.x - 10} y={rc.y + (5 - v + 0.5) * cs + 4} textAnchor="end">
+            {v}
+          </text>
+        </g>
+      ))}
+      <text
+        x={rc.x + rc.plotW / 2}
+        y={rc.y + rc.plotH + 36}
+        textAnchor="middle"
+        fontSize={11.5}
+        fontWeight={700}
+        letterSpacing="0.5"
+        fill={brand.heading}
+      >
+        {rc.xLabel.toUpperCase()} →
+      </text>
+      <text
+        x={rc.x - 30}
+        y={rc.y + rc.plotH / 2}
+        textAnchor="middle"
+        fontSize={11.5}
+        fontWeight={700}
+        letterSpacing="0.5"
+        fill={brand.heading}
+        transform={`rotate(-90 ${rc.x - 30} ${rc.y + rc.plotH / 2})`}
+      >
+        {rc.yLabel.toUpperCase()} →
+      </text>
+
+      {/* Mitigation arrows first, so markers draw over their ends. */}
+      {rc.markers.map(
+        (m) =>
+          m.residual && (
+            <line
+              key={`arrow-${m.id}`}
+              x1={m.cx}
+              y1={m.cy}
+              x2={m.residual.cx}
+              y2={m.residual.cy}
+              stroke={RISK_MARKER}
+              strokeWidth={1.8}
+              strokeDasharray="5 4"
+              markerEnd="url(#riskArrow)"
+            />
+          ),
+      )}
+
+      {/* Residual (post-mitigation) markers: open circles. */}
+      {rc.markers.map(
+        (m) =>
+          m.residual && (
+            <g key={`res-${m.id}`}>
+              <title>{`${m.code} residual: ${m.title}`}</title>
+              <circle cx={m.residual.cx} cy={m.residual.cy} r={R - 1.5} fill={brand.white} stroke={RISK_MARKER} strokeWidth={1.8} />
+              <text
+                x={m.residual.cx}
+                y={m.residual.cy + 3.5}
+                textAnchor="middle"
+                fontSize={9.5}
+                fontWeight={700}
+                fill={RISK_MARKER}
+              >
+                {m.code}
+              </text>
+            </g>
+          ),
+      )}
+
+      {/* Current markers. */}
+      {rc.markers.map((m) => (
+        <g key={`cur-${m.id}`}>
+          <title>{`${m.code}: ${m.title}`}</title>
+          <circle cx={m.cx} cy={m.cy} r={R} fill={RISK_MARKER} stroke={brand.white} strokeWidth={1.5} />
+          <text x={m.cx} y={m.cy + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill={brand.white}>
+            {m.code}
+          </text>
+        </g>
+      ))}
+
+      {/* Register panel. */}
+      {rc.panel && (
+        <g>
+          <rect x={rc.panel.x} y={rc.panel.y} width={rc.panel.w} height={rc.panel.h} rx={4} fill={brand.white} stroke="#BDBDBD" strokeWidth={1} />
+          <text x={rc.panel.x + 12} y={rc.panel.y + 20} fontSize={12} fontWeight={700} fill={brand.heading}>
+            Risk Register
+          </text>
+          {rc.panel.rows.map((row, i) => {
+            const moveW = textWidth(row.move, 10.5)
+            const titleMax = rc.panel!.w - 24 - 14 - textWidth(`${row.code}  `, 11, true) - moveW - 10
+            return (
+              <g key={`${row.code}-${i}`}>
+                <circle cx={rc.panel!.x + 17} cy={row.y - 3.5} r={4.5} fill={riskFill[row.level]} stroke="#BDBDBD" strokeWidth={0.5} />
+                <text x={rc.panel!.x + 27} y={row.y} fontSize={11} fill={brand.detailText}>
+                  <tspan fontWeight={700}>{row.code}</tspan>
+                  {`  ${truncate(row.title, 11, Math.max(30, titleMax))}`}
+                </text>
+                <text x={rc.panel!.x + rc.panel!.w - 12} y={row.y} textAnchor="end" fontSize={10.5} fill="#8b86a0">
+                  {row.move}
+                </text>
+              </g>
+            )
+          })}
+        </g>
+      )}
+
+      <ChartChrome layout={layout} />
     </svg>
   )
 }
@@ -713,6 +878,7 @@ function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string })
 export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, ariaLabel }: Props) {
   if (layout.timeline) return <TimelineSvg layout={layout} ariaLabel={ariaLabel} />
   if (layout.table) return <TableSvg layout={layout} ariaLabel={ariaLabel} />
+  if (layout.risk) return <RiskSvg layout={layout} ariaLabel={ariaLabel} />
   const { placed, connectors, zones, comms, legend, title, compliance, caption, banner, width, height } = layout
   const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
   const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {

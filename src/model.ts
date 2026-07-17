@@ -155,8 +155,17 @@ export type Direction = 'TB' | 'BT' | 'LR' | 'RL'
  *  - 'matrix'   2D grid: rows = depth, columns = group (or root)
  *  - 'swimlane' independent vertical lanes, one per group (or root)
  *  - 'timeline' transition / phase-in schedule: tasks as bars on a time axis
- *  - 'table'    a branded grid (RACI, compliance crosswalk, QASP/SLA, ...) */
-export type LayoutMode = 'tree' | 'radial' | 'layered' | 'matrix' | 'swimlane' | 'timeline' | 'table'
+ *  - 'table'    a branded grid (RACI, compliance crosswalk, QASP/SLA, ...)
+ *  - 'risk'     a 5×5 likelihood × consequence risk cube with markers */
+export type LayoutMode =
+  | 'tree'
+  | 'radial'
+  | 'layered'
+  | 'matrix'
+  | 'swimlane'
+  | 'timeline'
+  | 'table'
+  | 'risk'
 
 /** Optional status coloring for a table cell (green / amber / red / blue tint). */
 export type CellStatus = 'good' | 'warn' | 'bad' | 'info'
@@ -185,6 +194,96 @@ export interface TableDef {
   rows: TableRow[]
   /** Alternate row shading. Default on. */
   zebra?: boolean
+}
+
+/* ----------------------------------------------------------- risk cube */
+
+/** A position on the 5×5 risk cube (both axes run 1–5). */
+export interface RiskPos {
+  likelihood: number
+  consequence: number
+}
+
+/** One entry in the risk register (drawn on the 'risk' layout). */
+export interface RiskItem {
+  id: string
+  /** Short marker label drawn on the cube (e.g. "R1"). Auto-numbered when blank. */
+  code?: string
+  title: string
+  likelihood: number
+  consequence: number
+  /** Post-mitigation (residual) position; draws an arrow from the current
+   *  position to this one. */
+  residual?: RiskPos
+}
+
+/** Configuration for the 'risk' layout: the risks plus optional axis titles. */
+export interface RiskCube {
+  risks: RiskItem[]
+  /** Axis titles. Default "Consequence" (x) and "Likelihood" (y). */
+  xLabel?: string
+  yLabel?: string
+}
+
+export type RiskLevel = 'low' | 'moderate' | 'high'
+
+/** Cell severity for the 5×5 cube, following the standard DoD-style risk
+ *  reporting matrix (row = likelihood 1–5, column = consequence 1–5). Encoded
+ *  as data so a customer-specific matrix is a one-table change. */
+const RISK_MATRIX: RiskLevel[][] = [
+  ['low', 'low', 'low', 'moderate', 'moderate'], // likelihood 1
+  ['low', 'low', 'moderate', 'moderate', 'moderate'], // likelihood 2
+  ['low', 'moderate', 'moderate', 'moderate', 'high'], // likelihood 3
+  ['moderate', 'moderate', 'moderate', 'high', 'high'], // likelihood 4
+  ['moderate', 'moderate', 'high', 'high', 'high'], // likelihood 5
+]
+
+/** Clamp a scale value to an integer 1–5. */
+export function clampScale(v: number): number {
+  return Math.min(5, Math.max(1, Math.round(v)))
+}
+
+/** Severity of a (likelihood, consequence) cell, both 1–5. */
+export function riskLevel(likelihood: number, consequence: number): RiskLevel {
+  return RISK_MATRIX[clampScale(likelihood) - 1][clampScale(consequence) - 1]
+}
+
+/** Validate a risk cube from untrusted input: clamp positions to 1–5, drop
+ *  malformed entries and residuals, fill missing ids. Returns undefined when
+ *  there is no cube at all (charts that don't use the risk layout). */
+export function normalizeRisk(input: unknown): RiskCube | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const r = input as Partial<RiskCube>
+  if (!Array.isArray(r.risks)) return undefined
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? clampScale(v) : null
+  const risks: RiskItem[] = []
+  for (const item of r.risks) {
+    if (!item || typeof item !== 'object') continue
+    const L = num((item as RiskItem).likelihood)
+    const C = num((item as RiskItem).consequence)
+    if (L === null || C === null) continue
+    const rawId = (item as RiskItem).id
+    const out: RiskItem = {
+      id: typeof rawId === 'string' && rawId ? rawId : uid('r'),
+      title: typeof (item as RiskItem).title === 'string' ? (item as RiskItem).title : '',
+      likelihood: L,
+      consequence: C,
+    }
+    const code = (item as RiskItem).code
+    if (typeof code === 'string' && code.trim()) out.code = code.trim()
+    const res = (item as RiskItem).residual
+    if (res && typeof res === 'object') {
+      const rl = num(res.likelihood)
+      const rc = num(res.consequence)
+      if (rl !== null && rc !== null) out.residual = { likelihood: rl, consequence: rc }
+    }
+    risks.push(out)
+  }
+  const out: RiskCube = { risks }
+  if (typeof r.xLabel === 'string' && r.xLabel.trim()) out.xLabel = r.xLabel.trim()
+  if (typeof r.yLabel === 'string' && r.yLabel.trim()) out.yLabel = r.yLabel.trim()
+  return out
 }
 
 /** A labeled vertical marker on the schedule axis (e.g. a 30-day gate). */
@@ -231,6 +330,8 @@ export interface OrgChart {
   schedule?: Schedule
   /** Table definition, used by the 'table' layout. */
   table?: TableDef
+  /** Risk register + axis titles, used by the 'risk' layout. */
+  risk?: RiskCube
 }
 
 let counter = 0
@@ -571,7 +672,7 @@ export function normalizeChart(input: unknown): OrgChart {
   const dir = c.meta?.direction
   const dirOk = dir === 'TB' || dir === 'BT' || dir === 'LR' || dir === 'RL'
   const layout = c.meta?.layout
-  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline', 'table']
+  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline', 'table', 'risk']
   const layoutOk = typeof layout === 'string' && LAYOUTS.includes(layout)
   const chart: OrgChart = {
     version: CHART_VERSION,
@@ -596,6 +697,8 @@ export function normalizeChart(input: unknown): OrgChart {
   if (schedule) chart.schedule = schedule
   const table = normalizeTable(c.table)
   if (table) chart.table = table
+  const risk = normalizeRisk(c.risk)
+  if (risk) chart.risk = risk
   return sanitizeRefs(sanitizePositions(sanitizeColors(chart)))
 }
 

@@ -1,4 +1,4 @@
-import type { CellStatus, NodeRef, OrgChart, OrgNode, Requirement, TableCell } from './model'
+import type { CellStatus, NodeRef, OrgChart, OrgNode, Requirement, RiskItem, TableCell } from './model'
 import { uid } from './model'
 
 /*
@@ -799,9 +799,9 @@ function transitionSchedule(): OrgChart {
   }
 }
 
-/** A hidden placeholder root so table charts satisfy the non-empty roots
- *  invariant; the 'table' layout ignores roots entirely. */
-function tableRoots(): OrgNode[] {
+/** A hidden placeholder root so data charts (table / risk cube / xy) satisfy
+ *  the non-empty roots invariant; those layouts ignore roots entirely. */
+function placeholderRoots(): OrgNode[] {
   return [node({ title: '', variant: 'hidden' })]
 }
 
@@ -823,7 +823,7 @@ function raciMatrix(): OrgChart {
       layout: 'table',
       caption: 'R = Responsible · A = Accountable · C = Consulted · I = Informed.',
     },
-    roots: tableRoots(),
+    roots: placeholderRoots(),
     groups: [],
     comms: [],
     legend: [],
@@ -863,7 +863,7 @@ function qaspMetrics(): OrgChart {
       caption:
         'Green meets or exceeds the standard; amber is within the acceptable threshold; red is below threshold and triggers a corrective action plan.',
     },
-    roots: tableRoots(),
+    roots: placeholderRoots(),
     groups: [],
     comms: [],
     legend: [],
@@ -899,7 +899,7 @@ function complianceCrosswalk(): OrgChart {
       layout: 'table',
       caption: 'Every Section L instruction is traced to its proposal location, the Section M factor it satisfies, and the PWS it addresses.',
     },
-    roots: tableRoots(),
+    roots: placeholderRoots(),
     groups: [],
     comms: [],
     legend: [],
@@ -930,7 +930,7 @@ function tableChart(title: string, caption: string, table: OrgChart['table']): O
   return {
     version: 1,
     meta: { title, showTitle: true, layout: 'table', caption },
-    roots: tableRoots(),
+    roots: placeholderRoots(),
     groups: [],
     comms: [],
     legend: [],
@@ -1065,6 +1065,49 @@ function capabilityMap(): OrgChart {
   )
 }
 
+/** Template 19 — a 5×5 program risk cube with mitigation arrows. Each risk
+ *  carries its current (L, C) position and the residual position its funded
+ *  mitigation drives it to. */
+function riskCube(): OrgChart {
+  const risk = (
+    code: string,
+    title: string,
+    likelihood: number,
+    consequence: number,
+    residual?: { likelihood: number; consequence: number },
+  ): RiskItem => ({
+    id: uid('r'),
+    code,
+    title,
+    likelihood,
+    consequence,
+    ...(residual ? { residual } : {}),
+  })
+  return {
+    version: 1,
+    meta: {
+      title: 'Program Risk Assessment',
+      showTitle: true,
+      layout: 'risk',
+      caption:
+        'Every moderate and high risk carries a funded, named mitigation that moves it down and left before full operational capability — no risk is accepted without a burn-down path.',
+    },
+    roots: placeholderRoots(),
+    groups: [],
+    comms: [],
+    legend: [],
+    risk: {
+      risks: [
+        risk('R1', 'Incumbent staff capture falls below 90%', 4, 4, { likelihood: 2, consequence: 3 }),
+        risk('R2', 'Security clearance processing delays', 3, 4, { likelihood: 2, consequence: 2 }),
+        risk('R3', 'Legacy data migration exceeds cutover window', 3, 3, { likelihood: 1, consequence: 3 }),
+        risk('R4', 'Long-lead test equipment availability', 2, 4, { likelihood: 2, consequence: 2 }),
+        risk('R5', 'Surge tasking exceeds staffing plan', 4, 2, { likelihood: 2, consequence: 2 }),
+      ],
+    },
+  }
+}
+
 export const templates: { key: string; label: string; build: () => OrgChart }[] = [
   { key: 'simple-hierarchy', label: 'Simple Hierarchy (clean top-down)', build: simpleHierarchy },
   { key: 'functional-divisions', label: 'Functional Divisions (department stacks)', build: functionalDivisions },
@@ -1073,6 +1116,7 @@ export const templates: { key: string; label: string; build: () => OrgChart }[] 
   { key: 'wbs', label: 'Work Breakdown Structure (numbered)', build: wbs },
   { key: 'teaming', label: 'Teaming & Workshare (prime / subs)', build: teaming },
   { key: 'transition', label: 'Transition Schedule (30/60/90-day)', build: transitionSchedule },
+  { key: 'risk-cube', label: 'Risk Cube (5×5 heatmap)', build: riskCube },
   { key: 'raci', label: 'RACI Matrix (responsibility)', build: raciMatrix },
   { key: 'qasp', label: 'QASP / SLA Metrics (table)', build: qaspMetrics },
   { key: 'crosswalk', label: 'Section L-to-M Crosswalk (table)', build: complianceCrosswalk },
