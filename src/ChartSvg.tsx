@@ -3,7 +3,7 @@ import type { JSX, PointerEvent as ReactPointerEvent } from 'react'
 import { textWidth } from './layout'
 import type { ComplianceOverlay, Layout, PlacedNode } from './layout'
 import { REF_KIND_LABEL } from './compliance'
-import { cellSelId, colSelId, edgeArrow, parseSelection, riskSelId, seriesSelId } from './model'
+import { cellSelId, colSelId, edgeArrow, parseSelection, riskSelId, seriesSelId, stepSelId } from './model'
 import type { BadgeType, LegendMarker } from './model'
 import { brand, metrics as M, readableText, riskFill, variantFill, zoneFill } from './theme'
 
@@ -1360,12 +1360,111 @@ function XYSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
   )
 }
 
+/** Flow renderer for the cycle / pipeline / stack layouts: pre-computed step
+ *  shapes with centered titles, per-mode detail text, and click-to-select. */
+function FlowSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
+  const fl = layout.flow!
+  const { width, height } = layout
+  const sel = parseSelection(selectedId)
+  const selectedStepId = sel?.kind === 'step' ? sel.id : null
+  const titleLH = fl.kind === 'stack' ? 19 : fl.kind === 'pipeline' ? 17 : 16
+  const titleSize = fl.kind === 'stack' ? 14 : fl.kind === 'pipeline' ? 13 : 12.5
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fontFamily={brand.fontFamily}
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <defs>
+        <linearGradient id="skyGradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={brand.skyGradient[0]} />
+          <stop offset="50%" stopColor={brand.skyGradient[1]} />
+          <stop offset="100%" stopColor={brand.skyGradient[2]} />
+        </linearGradient>
+      </defs>
+      <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+      <g transform={`translate(0, ${layout.contentShift})`}>
+
+      {fl.steps.map((s) => (
+        <g
+          key={s.id}
+          onClick={selectData(onSelect, stepSelId(s.id))}
+          style={onSelect ? { cursor: 'pointer' } : undefined}
+        >
+          <path d={s.path} fill={s.fill} />
+          {s.id === selectedStepId && (
+            <path
+              d={s.path}
+              fill="none"
+              stroke={brand.marker}
+              strokeWidth={2.5}
+              strokeDasharray="6 4"
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
+          {s.titleLines.map((ln, i) => (
+            <text
+              key={i}
+              x={s.labelX}
+              y={s.labelY + (i - (s.titleLines.length - 1) / 2) * titleLH + titleSize / 3}
+              textAnchor="middle"
+              fontSize={titleSize}
+              fontWeight={700}
+              fill={s.text}
+            >
+              {ln}
+            </text>
+          ))}
+          {s.detail &&
+            s.detail.lines.map((ln, i) => (
+              <text
+                key={`d${i}`}
+                x={s.detail!.x}
+                y={s.detail!.y + i * 14}
+                textAnchor={s.detail!.anchor}
+                fontSize={10.5}
+                fill={brand.detailText}
+              >
+                {ln}
+              </text>
+            ))}
+        </g>
+      ))}
+
+      {fl.hub &&
+        fl.hub.lines.map((ln, i) => (
+          <text
+            key={`hub${i}`}
+            x={fl.hub!.x}
+            y={fl.hub!.y + (i - (fl.hub!.lines.length - 1) / 2) * 18 + 4.5}
+            textAnchor="middle"
+            fontSize={13}
+            fontWeight={700}
+            letterSpacing="0.4"
+            fill={brand.heading}
+          >
+            {ln.toUpperCase()}
+          </text>
+        ))}
+
+      <ChartChrome layout={layout} />
+      </g>
+      <OverlayChrome layout={layout} />
+    </svg>
+  )
+}
+
 export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, ariaLabel }: Props) {
   const dataProps = { layout, ariaLabel, selectedId, onSelect }
   if (layout.timeline) return <TimelineSvg {...dataProps} />
   if (layout.table) return <TableSvg {...dataProps} />
   if (layout.risk) return <RiskSvg {...dataProps} />
   if (layout.xy) return <XYSvg {...dataProps} />
+  if (layout.flow) return <FlowSvg {...dataProps} />
   const { placed, connectors, zones, comms, legend, compliance, width, height } = layout
   const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
   const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {

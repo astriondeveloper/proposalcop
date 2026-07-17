@@ -1,5 +1,6 @@
 import type {
   CellStatus,
+  FlowStep,
   NodeRef,
   OrgChart,
   OrgNode,
@@ -1660,6 +1661,85 @@ function currentVsFuture(): OrgChart {
   }
 }
 
+/* ------------------------------------------------ flow templates */
+
+/** Shared builder for a flow-layout chart (cycle / pipeline / stack). */
+function flowChart(
+  layout: 'cycle' | 'pipeline' | 'stack',
+  title: string,
+  caption: string,
+  steps: Omit<FlowStep, 'id'>[],
+  hub?: string,
+): OrgChart {
+  return {
+    version: 1,
+    meta: { title, showTitle: true, layout, caption },
+    roots: placeholderRoots(),
+    groups: [],
+    comms: [],
+    legend: [],
+    flow: {
+      steps: steps.map((s) => ({ ...s, id: uid('f') })),
+      ...(hub ? { hub } : {}),
+    },
+  }
+}
+
+/** Template 31 — PDCA continuous-improvement cycle. */
+function pdcaCycle(): OrgChart {
+  return flowChart(
+    'cycle',
+    'Continuous Improvement Cycle',
+    'Every metric miss enters the loop and exits as a deployed process change — improvement is scheduled, measured, and briefed at the monthly PMR, not left to chance.',
+    [
+      { title: 'Plan', detail: 'Baseline metrics; target the gap', variant: 'primary' },
+      { title: 'Do', detail: 'Pilot the change on one task order', variant: 'secondary' },
+      { title: 'Check', detail: 'Measure against QASP thresholds', variant: 'tertiary' },
+      { title: 'Act', detail: 'Standardize and train the change', variant: 'accent' },
+    ],
+    'Continuous Improvement',
+  )
+}
+
+/** Template 32 — DevSecOps pipeline with a security gate under every stage. */
+function devSecOpsPipeline(): OrgChart {
+  const stage = (title: string, detail: string): Omit<FlowStep, 'id'> => ({
+    title,
+    detail,
+    variant: 'secondary',
+  })
+  return flowChart(
+    'pipeline',
+    'DevSecOps Pipeline',
+    'Security is a gate at every stage — not a scan at the end. Every build that reaches operations has already passed threat modeling, static and dynamic analysis, and policy-as-code checks.',
+    [
+      { title: 'Plan', detail: 'Threat modeling; abuse cases', variant: 'primary' },
+      stage('Code', 'Peer review; secrets scanning'),
+      stage('Build', 'SBOM; dependency audit'),
+      stage('Test', 'SAST / DAST; container scan'),
+      stage('Release', 'Signed artifacts; policy as code'),
+      stage('Operate', 'Zero Trust runtime; drift detection'),
+      { title: 'Monitor', detail: 'SIEM; continuous ATO evidence', variant: 'accent' },
+    ],
+  )
+}
+
+/** Template 33 — technology stack layers, top (mission) to bottom (cloud). */
+function techStack(): OrgChart {
+  return flowChart(
+    'stack',
+    'Technology Stack',
+    'Every layer is government-owned and exportable: open APIs between layers mean no vendor lock-in, and each layer can modernize independently without breaking the ones above it.',
+    [
+      { title: 'Mission Applications', detail: 'Test dashboards · scheduling · reporting', variant: 'primary' },
+      { title: 'Data & Analytics', detail: 'Digital twin · telemetry lake · ML models', variant: 'secondary' },
+      { title: 'Platform Services', detail: 'APIs · DevSecOps pipeline · identity (ICAM)', variant: 'tertiary' },
+      { title: 'Infrastructure', detail: 'IL5 cloud · hybrid compute · SD-WAN', variant: 'secondary' },
+      { title: 'Security & Zero Trust', detail: 'Continuous ATO · SIEM · policy enforcement', variant: 'accent' },
+    ],
+  )
+}
+
 export const templates: { key: string; label: string; build: () => OrgChart }[] = [
   { key: 'simple-hierarchy', label: 'Simple Hierarchy (clean top-down)', build: simpleHierarchy },
   { key: 'functional-divisions', label: 'Functional Divisions (department stacks)', build: functionalDivisions },
@@ -1669,6 +1749,9 @@ export const templates: { key: string; label: string; build: () => OrgChart }[] 
   { key: 'governance', label: 'Governance Model (boards & tiers)', build: governance },
   { key: 'escalation', label: 'Escalation Path (issues & clocks)', build: escalationPath },
   { key: 'process-flow', label: 'Process Flow (swimlanes)', build: processFlow },
+  { key: 'pdca', label: 'Continuous Improvement (PDCA cycle)', build: pdcaCycle },
+  { key: 'devsecops', label: 'DevSecOps Pipeline (chevrons)', build: devSecOpsPipeline },
+  { key: 'tech-stack', label: 'Technology Stack (layers)', build: techStack },
   { key: 'current-future', label: 'Current vs. Future State', build: currentVsFuture },
   { key: 'wbs', label: 'Work Breakdown Structure (numbered)', build: wbs },
   { key: 'teaming', label: 'Teaming & Workshare (prime / subs)', build: teaming },
