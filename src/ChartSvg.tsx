@@ -575,8 +575,144 @@ function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string
   )
 }
 
+/* Status-tint fills for table cells (brand zone tints + a light red). */
+const CELL_TINT: Record<string, string> = {
+  good: brand.zoneGreen,
+  warn: brand.zoneOrange,
+  bad: '#FBDAD5',
+  info: brand.zoneBlue,
+}
+const TBL_GRID = '#D8D8E2'
+const TBL_ZEBRA = '#F7F7FB'
+const TBL_SECTION = '#ECE9F5'
+
+/** Branded data-table renderer (RACI, crosswalks, QASP/SLA, comparisons). */
+function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
+  const t = layout.table!
+  const { width, height, title } = layout
+  const padX = 10
+  const lineH = 15
+  const bodyBottom = t.rows.length ? t.rows[t.rows.length - 1].y + t.rows[t.rows.length - 1].h : t.y + t.headerH
+  const anchorFor = (a: 'left' | 'center' | 'right') => (a === 'left' ? 'start' : a === 'right' ? 'end' : 'middle')
+  const textX = (x: number, w: number, a: 'left' | 'center' | 'right') =>
+    a === 'left' ? x + padX : a === 'right' ? x + w - padX : x + w / 2
+  // Baseline for line `li` of `n` lines, vertically centered in a row of height h.
+  const lineY = (y: number, h: number, n: number, li: number) => y + (h - n * lineH) / 2 + (li + 1) * lineH - 4
+  const header = variantFill.primary
+
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fontFamily={brand.fontFamily}
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <defs>
+        <linearGradient id="skyGradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={brand.skyGradient[0]} />
+          <stop offset="50%" stopColor={brand.skyGradient[1]} />
+          <stop offset="100%" stopColor={brand.skyGradient[2]} />
+        </linearGradient>
+      </defs>
+      <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+
+      {/* Header row. */}
+      <rect x={t.x} y={t.y} width={t.totalW} height={t.headerH} fill={header.fill} />
+      {t.columns.map((c, i) =>
+        c.headerLines.map((ln, li) => (
+          <text
+            key={`h-${i}-${li}`}
+            x={textX(c.x, c.w, c.align)}
+            y={lineY(t.y, t.headerH, c.headerLines.length, li)}
+            fontSize={12}
+            fontWeight={700}
+            fill={header.text}
+            textAnchor={anchorFor(c.align)}
+            fontFamily={brand.fontFamily}
+          >
+            {ln}
+          </text>
+        )),
+      )}
+
+      {/* Body rows. */}
+      {t.rows.map((r, ri) => {
+        if (r.header) {
+          const lines = r.cells[0]?.lines ?? []
+          return (
+            <g key={`r-${ri}`}>
+              <rect x={t.x} y={r.y} width={t.totalW} height={r.h} fill={TBL_SECTION} stroke={TBL_GRID} strokeWidth={0.75} />
+              {lines.map((ln, li) => (
+                <text
+                  key={li}
+                  x={t.x + padX}
+                  y={lineY(r.y, r.h, lines.length, li)}
+                  fontSize={11}
+                  fontWeight={700}
+                  fill={brand.heading}
+                  fontFamily={brand.fontFamily}
+                >
+                  {ln}
+                </text>
+              ))}
+            </g>
+          )
+        }
+        return (
+          <g key={`r-${ri}`}>
+            {t.columns.map((c, ci) => {
+              const cell = r.cells[ci]
+              const fill = cell?.status
+                ? CELL_TINT[cell.status]
+                : t.zebra && ri % 2 === 1
+                  ? TBL_ZEBRA
+                  : brand.white
+              return (
+                <g key={ci}>
+                  <rect x={c.x} y={r.y} width={c.w} height={r.h} fill={fill} stroke={TBL_GRID} strokeWidth={0.75} />
+                  {(cell?.lines ?? []).map((ln, li) => (
+                    <text
+                      key={li}
+                      x={textX(c.x, c.w, c.align)}
+                      y={lineY(r.y, r.h, cell.lines.length, li)}
+                      fontSize={11}
+                      fill={brand.detailText}
+                      textAnchor={anchorFor(c.align)}
+                      fontFamily={brand.fontFamily}
+                    >
+                      {ln}
+                    </text>
+                  ))}
+                </g>
+              )
+            })}
+          </g>
+        )
+      })}
+
+      {/* Outer border. */}
+      <rect x={t.x} y={t.y} width={t.totalW} height={bodyBottom - t.y} fill="none" stroke="#BDBDBD" strokeWidth={1} />
+
+      {title && (
+        <g>
+          <text x={title.x} y={title.y} fontSize={20} fontWeight={700} fill={brand.heading} fontFamily={brand.fontFamily}>
+            {title.text.toUpperCase()}
+          </text>
+          <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
+        </g>
+      )}
+      {layout.caption && <CaptionText caption={layout.caption} />}
+      {layout.banner && <BannerBars text={layout.banner} width={width} height={height} />}
+    </svg>
+  )
+}
+
 export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, ariaLabel }: Props) {
   if (layout.timeline) return <TimelineSvg layout={layout} ariaLabel={ariaLabel} />
+  if (layout.table) return <TableSvg layout={layout} ariaLabel={ariaLabel} />
   const { placed, connectors, zones, comms, legend, title, compliance, caption, banner, width, height } = layout
   const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
   const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {

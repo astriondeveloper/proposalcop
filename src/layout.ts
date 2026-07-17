@@ -1,4 +1,4 @@
-import type { CommLink, Direction, Group, LegendItem, OrgChart, OrgNode, RefKind } from './model'
+import type { CellStatus, CommLink, Direction, Group, LegendItem, OrgChart, OrgNode, RefKind } from './model'
 import { clone, visit, wbsNumbers } from './model'
 import { computeCompliance, REF_KIND_LABEL } from './compliance'
 import { metrics as M, readableText, variantFill } from './theme'
@@ -129,6 +129,38 @@ export interface CaptionLayout {
   h: number
 }
 
+export interface TableColLayout {
+  label: string
+  headerLines: string[]
+  x: number
+  w: number
+  align: 'left' | 'center' | 'right'
+}
+
+export interface TableCellLayout {
+  lines: string[]
+  status?: CellStatus
+  align: 'left' | 'center' | 'right'
+}
+
+export interface TableRowLayout {
+  y: number
+  h: number
+  header: boolean
+  cells: TableCellLayout[]
+}
+
+/** Geometry for the 'table' layout: a branded grid. */
+export interface TableLayout {
+  x: number
+  y: number
+  headerH: number
+  zebra: boolean
+  totalW: number
+  columns: TableColLayout[]
+  rows: TableRowLayout[]
+}
+
 export interface Layout {
   placed: PlacedNode[]
   /** Reporting-line connector paths. */
@@ -140,6 +172,8 @@ export interface Layout {
   compliance: ComplianceOverlay | null
   /** Transition-schedule geometry when the 'timeline' layout is active. */
   timeline: TimelineLayout | null
+  /** Table geometry when the 'table' layout is active. */
+  table: TableLayout | null
   caption: CaptionLayout | null
   /** Classification / CUI marking text, rendered as top + bottom banners. */
   banner: string | null
@@ -587,6 +621,7 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
     title,
     compliance,
     timeline: null,
+    table: null,
     caption,
     banner: chart.meta.banner ?? null,
     width,
@@ -1228,10 +1263,140 @@ function layoutTimeline(chart: OrgChart): Layout {
     title,
     compliance: null,
     timeline,
+    table: null,
     caption,
     banner: chart.meta.banner ?? null,
     width: Math.max(plotX + plotW, caption ? caption.x + caption.w : 0) + M.canvasPad,
     height: (caption ? caption.y + caption.h : bottom) + M.canvasPad,
+  }
+}
+
+/* ------------------------------------------------------------------ table */
+
+const TBL_PAD_X = 10
+const TBL_PAD_Y = 7
+const TBL_HEADER_SIZE = 12
+const TBL_CELL_SIZE = 11
+const TBL_LINE_H = 15
+const TBL_MIN_COL = 70
+const TBL_MAX_COL = 340
+const TBL_ROW_MIN = 26
+
+/** Branded data table (RACI, compliance crosswalk, QASP/SLA, comparison, ...).
+ *  Columns size to content unless a fixed width is given; rows grow to fit
+ *  wrapped text. A `header` row spans all columns as a section band. */
+function layoutTable(chart: OrgChart): Layout {
+  const oy = M.canvasPad + (chart.meta.showTitle && chart.meta.title.trim() ? 44 : 0)
+  const ox = M.canvasPad
+  const title =
+    chart.meta.showTitle && chart.meta.title.trim()
+      ? {
+          text: chart.meta.title,
+          x: M.canvasPad,
+          y: M.canvasPad + 22,
+          w: textWidth(chart.meta.title.toUpperCase(), 20, true) * TITLE_BAR_SCALE,
+        }
+      : null
+
+  const table = chart.table
+  const empty = (bottom: number, right: number): Layout => {
+    const caption = captionLayout(chart, right - M.canvasPad, bottom)
+    return {
+      placed: [],
+      connectors: [],
+      zones: [],
+      comms: [],
+      legend: null,
+      title,
+      compliance: null,
+      timeline: null,
+      table: null,
+      caption,
+      banner: chart.meta.banner ?? null,
+      width: Math.max(right, caption ? caption.x + caption.w : 0) + M.canvasPad,
+      height: (caption ? caption.y + caption.h : bottom) + M.canvasPad,
+    }
+  }
+  if (!table || !table.columns.length) return empty(oy + 40, ox + 200)
+
+  const cols = table.columns
+  const colW = cols.map((c, ci) => {
+    if (c.width) return c.width
+    let w = textWidth(c.label, TBL_HEADER_SIZE, true)
+    for (const r of table.rows) {
+      if (r.header) continue
+      const cell = r.cells[ci]
+      if (cell) w = Math.max(w, textWidth(cell.text, TBL_CELL_SIZE))
+    }
+    return Math.max(TBL_MIN_COL, Math.min(TBL_MAX_COL, Math.ceil(w) + TBL_PAD_X * 2))
+  })
+  const colX: number[] = []
+  let cx = ox
+  for (let i = 0; i < cols.length; i++) {
+    colX[i] = cx
+    cx += colW[i]
+  }
+  const totalW = cx - ox
+
+  const headerLinesByCol = cols.map((c, i) => wrapText(c.label, TBL_HEADER_SIZE, colW[i] - TBL_PAD_X * 2, true))
+  const headerH = Math.max(TBL_ROW_MIN, Math.max(...headerLinesByCol.map((l) => l.length)) * TBL_LINE_H + TBL_PAD_Y * 2)
+
+  const columns: TableColLayout[] = cols.map((c, i) => ({
+    label: c.label,
+    headerLines: headerLinesByCol[i],
+    x: colX[i],
+    w: colW[i],
+    align: c.align ?? (i === 0 ? 'left' : 'center'),
+  }))
+
+  let ry = oy + headerH
+  const rows: TableRowLayout[] = table.rows.map((r) => {
+    if (r.header) {
+      const label = r.cells[0]?.text ?? ''
+      const lines = wrapText(label, TBL_CELL_SIZE, totalW - TBL_PAD_X * 2, true)
+      const h = Math.max(22, lines.length * TBL_LINE_H + TBL_PAD_Y * 2)
+      const row: TableRowLayout = { y: ry, h, header: true, cells: [{ lines, align: 'left' }] }
+      ry += h
+      return row
+    }
+    const cellLines = cols.map((_c, i) => wrapText(r.cells[i]?.text ?? '', TBL_CELL_SIZE, colW[i] - TBL_PAD_X * 2))
+    const h = Math.max(TBL_ROW_MIN, Math.max(...cellLines.map((l) => l.length)) * TBL_LINE_H + TBL_PAD_Y * 2)
+    const cells: TableCellLayout[] = cols.map((c, i) => ({
+      lines: cellLines[i],
+      status: r.cells[i]?.status,
+      align: c.align ?? (i === 0 ? 'left' : 'center'),
+    }))
+    const row: TableRowLayout = { y: ry, h, header: false, cells }
+    ry += h
+    return row
+  })
+  const tableBottom = ry
+
+  const tableLayout: TableLayout = {
+    x: ox,
+    y: oy,
+    headerH,
+    zebra: table.zebra !== false,
+    totalW,
+    columns,
+    rows,
+  }
+
+  const caption = captionLayout(chart, totalW, tableBottom)
+  return {
+    placed: [],
+    connectors: [],
+    zones: [],
+    comms: [],
+    legend: null,
+    title,
+    compliance: null,
+    timeline: null,
+    table: tableLayout,
+    caption,
+    banner: chart.meta.banner ?? null,
+    width: Math.max(ox + totalW, caption ? caption.x + caption.w : 0) + M.canvasPad,
+    height: (caption ? caption.y + caption.h : tableBottom) + M.canvasPad,
   }
 }
 
@@ -1245,6 +1410,7 @@ export function layoutChart(input: OrgChart): Layout {
   if (mode === 'matrix') return layoutMatrix(chart)
   if (mode === 'swimlane') return layoutSwimlane(chart)
   if (mode === 'timeline') return layoutTimeline(chart)
+  if (mode === 'table') return layoutTable(chart)
 
   const dir: Direction = chart.meta.direction ?? 'TB'
   const vertical = dir === 'TB' || dir === 'BT'

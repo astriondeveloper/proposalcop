@@ -96,6 +96,7 @@ const LAYOUT_MODES: { value: LayoutMode; label: string }[] = [
   { value: 'matrix', label: 'Matrix (grid by group)' },
   { value: 'swimlane', label: 'Swimlane (lanes by group)' },
   { value: 'timeline', label: 'Timeline (transition schedule)' },
+  { value: 'table', label: 'Table (RACI, crosswalk, QASP…)' },
 ]
 
 const DIRECTIONS: { value: Direction; label: string }[] = [
@@ -516,6 +517,11 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           {LAYOUT_MODES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
         </select>
       </label>
+      {chart.meta.layout === 'table' && (
+        <p className="hint">
+          This is a table. Start from a table template, then edit its columns and rows in the JSON tab.
+        </p>
+      )}
       <label>Flow direction
         <select
           value={chart.meta.direction ?? 'TB'}

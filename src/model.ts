@@ -154,8 +154,38 @@ export type Direction = 'TB' | 'BT' | 'LR' | 'RL'
  *  - 'layered'  depth-aligned rows (Sugiyama-lite), cross-links pulled together
  *  - 'matrix'   2D grid: rows = depth, columns = group (or root)
  *  - 'swimlane' independent vertical lanes, one per group (or root)
- *  - 'timeline' transition / phase-in schedule: tasks as bars on a time axis */
-export type LayoutMode = 'tree' | 'radial' | 'layered' | 'matrix' | 'swimlane' | 'timeline'
+ *  - 'timeline' transition / phase-in schedule: tasks as bars on a time axis
+ *  - 'table'    a branded grid (RACI, compliance crosswalk, QASP/SLA, ...) */
+export type LayoutMode = 'tree' | 'radial' | 'layered' | 'matrix' | 'swimlane' | 'timeline' | 'table'
+
+/** Optional status coloring for a table cell (green / amber / red / blue tint). */
+export type CellStatus = 'good' | 'warn' | 'bad' | 'info'
+
+export interface TableColumn {
+  label: string
+  /** Fixed width in px; omitted columns size to their content. */
+  width?: number
+  align?: 'left' | 'center' | 'right'
+}
+
+export interface TableCell {
+  text: string
+  status?: CellStatus
+}
+
+export interface TableRow {
+  cells: TableCell[]
+  /** A full-width section header row (bold, tinted); `cells[0].text` is its label. */
+  header?: boolean
+}
+
+/** A branded data table (the 'table' layout). */
+export interface TableDef {
+  columns: TableColumn[]
+  rows: TableRow[]
+  /** Alternate row shading. Default on. */
+  zebra?: boolean
+}
 
 /** A labeled vertical marker on the schedule axis (e.g. a 30-day gate). */
 export interface SchedulePhase {
@@ -199,6 +229,8 @@ export interface OrgChart {
   compliance?: Compliance
   /** Transition-schedule config, used by the 'timeline' layout. */
   schedule?: Schedule
+  /** Table definition, used by the 'table' layout. */
+  table?: TableDef
 }
 
 let counter = 0
@@ -539,7 +571,7 @@ export function normalizeChart(input: unknown): OrgChart {
   const dir = c.meta?.direction
   const dirOk = dir === 'TB' || dir === 'BT' || dir === 'LR' || dir === 'RL'
   const layout = c.meta?.layout
-  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline']
+  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline', 'table']
   const layoutOk = typeof layout === 'string' && LAYOUTS.includes(layout)
   const chart: OrgChart = {
     version: CHART_VERSION,
@@ -562,7 +594,46 @@ export function normalizeChart(input: unknown): OrgChart {
   if (compliance) chart.compliance = compliance
   const schedule = normalizeSchedule(c.schedule)
   if (schedule) chart.schedule = schedule
+  const table = normalizeTable(c.table)
+  if (table) chart.table = table
   return sanitizeRefs(sanitizePositions(sanitizeColors(chart)))
+}
+
+const CELL_STATUSES = ['good', 'warn', 'bad', 'info']
+
+/** Validate a table definition from untrusted input: coerce columns/rows/cells
+ *  to the current shape, keep known cell statuses, drop malformed entries.
+ *  Returns undefined when there are no columns. */
+export function normalizeTable(input: unknown): TableDef | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const t = input as Partial<TableDef>
+  if (!Array.isArray(t.columns) || t.columns.length === 0) return undefined
+  const columns: TableColumn[] = t.columns
+    .filter((c): c is TableColumn => !!c && typeof c === 'object')
+    .map((c) => {
+      const col: TableColumn = { label: typeof c.label === 'string' ? c.label : '' }
+      if (typeof c.width === 'number' && Number.isFinite(c.width) && c.width > 0) col.width = c.width
+      if (c.align === 'left' || c.align === 'center' || c.align === 'right') col.align = c.align
+      return col
+    })
+  if (!columns.length) return undefined
+  const rows: TableRow[] = (Array.isArray(t.rows) ? t.rows : [])
+    .filter((r): r is TableRow => !!r && typeof r === 'object' && Array.isArray(r.cells))
+    .map((r) => {
+      const cells: TableCell[] = r.cells
+        .filter((c): c is TableCell => !!c && typeof c === 'object')
+        .map((c) => {
+          const cell: TableCell = { text: typeof c.text === 'string' ? c.text : '' }
+          if (typeof c.status === 'string' && CELL_STATUSES.includes(c.status)) cell.status = c.status
+          return cell
+        })
+      const row: TableRow = { cells }
+      if (r.header === true) row.header = true
+      return row
+    })
+  const out: TableDef = { columns, rows }
+  if (t.zebra === false) out.zebra = false
+  return out
 }
 
 /** Validate a schedule config from untrusted input. Keeps a known unit, a

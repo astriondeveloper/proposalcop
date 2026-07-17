@@ -1,4 +1,4 @@
-import type { NodeRef, OrgChart, OrgNode, Requirement } from './model'
+import type { CellStatus, NodeRef, OrgChart, OrgNode, Requirement, TableCell } from './model'
 import { uid } from './model'
 
 /*
@@ -799,6 +799,132 @@ function transitionSchedule(): OrgChart {
   }
 }
 
+/** A hidden placeholder root so table charts satisfy the non-empty roots
+ *  invariant; the 'table' layout ignores roots entirely. */
+function tableRoots(): OrgNode[] {
+  return [node({ title: '', variant: 'hidden' })]
+}
+
+const cell = (text: string, status?: CellStatus): TableCell => (status ? { text, status } : { text })
+
+/** Template 11 — RACI / responsibility assignment matrix. */
+function raciMatrix(): OrgChart {
+  const raci = (letter: string): TableCell => {
+    const status: CellStatus | undefined =
+      letter === 'A' ? 'warn' : letter === 'R' ? 'good' : letter === 'C' ? 'info' : undefined
+    return cell(letter, status)
+  }
+  const row = (task: string, letters: string[]) => ({ cells: [cell(task), ...letters.map(raci)] })
+  return {
+    version: 1,
+    meta: {
+      title: 'RACI — Responsibility Assignment',
+      showTitle: true,
+      layout: 'table',
+      caption: 'R = Responsible · A = Accountable · C = Consulted · I = Informed.',
+    },
+    roots: tableRoots(),
+    groups: [],
+    comms: [],
+    legend: [],
+    table: {
+      columns: [
+        { label: 'PWS Task / Activity', width: 230, align: 'left' },
+        { label: 'PM' },
+        { label: 'Deputy PM' },
+        { label: 'Ops Lead' },
+        { label: 'Eng Lead' },
+        { label: 'QA / Safety' },
+        { label: 'Customer COR' },
+      ],
+      rows: [
+        row('Program management & control', ['A', 'R', 'I', 'I', 'I', 'C']),
+        row('Test operations execution', ['C', 'A', 'R', 'C', 'I', 'I']),
+        row('Engineering & technical support', ['I', 'C', 'A', 'R', 'C', 'I']),
+        row('Quality, safety & mission assurance', ['I', 'I', 'C', 'C', 'A', 'I']),
+        row('Contract & financial management', ['A', 'C', 'I', 'I', 'I', 'C']),
+        row('Risk & schedule management', ['A', 'R', 'C', 'C', 'I', 'I']),
+      ],
+    },
+  }
+}
+
+/** Template 12 — QASP / SLA metrics dashboard with green/amber/red ratings. */
+function qaspMetrics(): OrgChart {
+  const row = (obj: string, std: string, aql: string, method: string, current: TableCell) => ({
+    cells: [cell(obj), cell(std), cell(aql), cell(method), current],
+  })
+  return {
+    version: 1,
+    meta: {
+      title: 'QASP — Performance Metrics',
+      showTitle: true,
+      layout: 'table',
+      caption:
+        'Green meets or exceeds the standard; amber is within the acceptable threshold; red is below threshold and triggers a corrective action plan.',
+    },
+    roots: tableRoots(),
+    groups: [],
+    comms: [],
+    legend: [],
+    table: {
+      columns: [
+        { label: 'Performance Objective', width: 220, align: 'left' },
+        { label: 'Standard', width: 150, align: 'left' },
+        { label: 'Threshold (AQL)' },
+        { label: 'Surveillance Method', width: 160, align: 'left' },
+        { label: 'Current' },
+      ],
+      rows: [
+        row('System availability', '99.9% uptime', '≥ 99.5%', 'Automated monitoring', cell('99.94%', 'good')),
+        row('Incident response (Sev-1)', 'Acknowledge ≤ 15 min', '≤ 30 min', 'Ticket audit', cell('22 min', 'warn')),
+        row('Change success rate', '≥ 98%', '≥ 95%', 'CAB review', cell('99.1%', 'good')),
+        row('Deliverable on-time', '100% on schedule', '≥ 95%', 'CDRL tracking', cell('93%', 'bad')),
+        row('Customer satisfaction', '≥ 4.5 / 5', '≥ 4.0 / 5', 'Quarterly survey', cell('4.6 / 5', 'good')),
+      ],
+    },
+  }
+}
+
+/** Template 13 — Section L-to-M compliance crosswalk. */
+function complianceCrosswalk(): OrgChart {
+  const row = (l: string, loc: string, m: string, pws: string, status: TableCell) => ({
+    cells: [cell(l), cell(loc), cell(m), cell(pws), status],
+  })
+  return {
+    version: 1,
+    meta: {
+      title: 'Section L-to-M Compliance Crosswalk',
+      showTitle: true,
+      layout: 'table',
+      caption: 'Every Section L instruction is traced to its proposal location, the Section M factor it satisfies, and the PWS it addresses.',
+    },
+    roots: tableRoots(),
+    groups: [],
+    comms: [],
+    legend: [],
+    table: {
+      columns: [
+        { label: 'Section L (Instruction)', width: 210, align: 'left' },
+        { label: 'Proposal Location', width: 150, align: 'left' },
+        { label: 'Section M (Evaluation Factor)', width: 200, align: 'left' },
+        { label: 'PWS' },
+        { label: 'Status' },
+      ],
+      rows: [
+        { header: true, cells: [cell('Volume I — Technical & Management')] },
+        row('L.3.1 Technical Approach', 'Vol I, §2', 'M.2 Technical', '3.1–3.10', cell('Addressed', 'good')),
+        row('L.3.2 Management Approach', 'Vol I, §3', 'M.3 Management', '2.1–2.4', cell('Addressed', 'good')),
+        row('L.3.3 Staffing & Key Personnel', 'Vol I, §4', 'M.3 Management', '2.4', cell('Addressed', 'good')),
+        row('L.3.5 Transition Plan', 'Vol I, §5', 'M.3 Management', '3.20', cell('Draft', 'warn')),
+        { header: true, cells: [cell('Volume II — Past Performance & Small Business')] },
+        row('L.3.4 Past Performance', 'Vol II, §1', 'M.4 Past Performance', '—', cell('Addressed', 'good')),
+        row('L.3.6 Small Business Participation', 'Vol II, §2', 'M.5 Small Business', '—', cell('Open', 'bad')),
+      ],
+    },
+  }
+}
+
 export const templates: { key: string; label: string; build: () => OrgChart }[] = [
   { key: 'simple-hierarchy', label: 'Simple Hierarchy (clean top-down)', build: simpleHierarchy },
   { key: 'functional-divisions', label: 'Functional Divisions (department stacks)', build: functionalDivisions },
@@ -807,6 +933,9 @@ export const templates: { key: string; label: string; build: () => OrgChart }[] 
   { key: 'wbs', label: 'Work Breakdown Structure (numbered)', build: wbs },
   { key: 'teaming', label: 'Teaming & Workshare (prime / subs)', build: teaming },
   { key: 'transition', label: 'Transition Schedule (30/60/90-day)', build: transitionSchedule },
+  { key: 'raci', label: 'RACI Matrix (responsibility)', build: raciMatrix },
+  { key: 'qasp', label: 'QASP / SLA Metrics (table)', build: qaspMetrics },
+  { key: 'crosswalk', label: 'Section L-to-M Crosswalk (table)', build: complianceCrosswalk },
   { key: 'joint-venture', label: 'Joint Venture (board, PMO & TMs)', build: jointVenture },
   { key: 'mentor-protege', label: 'Mentor-Protégé JV (multi-site)', build: mentorProtege },
   { key: 'pmo-comms', label: 'PMO (lines of communication)', build: pmoComms },
