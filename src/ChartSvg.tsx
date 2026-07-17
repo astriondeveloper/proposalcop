@@ -487,6 +487,7 @@ function TimelineSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) 
         </linearGradient>
       </defs>
       <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+      <g transform={`translate(0, ${layout.contentShift})`}>
 
       {/* Workstream swimlane bands (behind everything). */}
       {tl.bands.map((band, i) => (
@@ -572,6 +573,8 @@ function TimelineSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) 
       })}
 
       <ChartChrome layout={layout} />
+      </g>
+      <OverlayChrome layout={layout} />
     </svg>
   )
 }
@@ -620,6 +623,7 @@ function TableSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
         </linearGradient>
       </defs>
       <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+      <g transform={`translate(0, ${layout.contentShift})`}>
 
       {/* Header row. Clicking a column header selects that column's editor. */}
       <rect x={t.x} y={t.y} width={t.totalW} height={t.headerH} fill={header.fill} />
@@ -734,14 +738,150 @@ function TableSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
         ))}
 
       <ChartChrome layout={layout} />
+      </g>
+      <OverlayChrome layout={layout} />
     </svg>
   )
 }
 
-/** Title + accent bar, caption, and classification banners — the shared chrome
- *  every data-layout renderer (timeline / table / risk / xy) draws on top. */
+/** Stat-strip glyphs: a small brand-locked icon set drawn as strokes, so the
+ *  exported SVG stays self-contained (no images). */
+function StatGlyph({ icon, x, y }: { icon: string; x: number; y: number }) {
+  const c = brand.comm
+  const common = { stroke: c, strokeWidth: 1.7, fill: 'none' as const, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  switch (icon) {
+    case 'people':
+      return (
+        <g transform={`translate(${x}, ${y})`} {...common}>
+          <circle cx={6.5} cy={6} r={3.2} />
+          <path d="M 1 17 a 5.5 5.5 0 0 1 11 0" />
+          <circle cx={14.5} cy={7} r={2.6} />
+          <path d="M 13 17 a 4.6 4.6 0 0 1 6 -4.2" />
+        </g>
+      )
+    case 'clock':
+      return (
+        <g transform={`translate(${x}, ${y})`} {...common}>
+          <circle cx={9} cy={9.5} r={7.5} />
+          <path d="M 9 5.5 V 9.5 L 12.5 11.5" />
+        </g>
+      )
+    case 'shield':
+      return (
+        <g transform={`translate(${x}, ${y})`} {...common}>
+          <path d="M 9 1.5 L 15.5 4 V 9 c 0 4.4 -2.8 7 -6.5 8.5 C 5.3 16 2.5 13.4 2.5 9 V 4 Z" />
+          <path d="M 6 9 l 2.2 2.2 L 12.5 7" />
+        </g>
+      )
+    case 'star':
+      return (
+        <g transform={`translate(${x}, ${y})`} {...common}>
+          <path d="M 9 1.5 L 11.3 6.4 L 16.6 7 L 12.7 10.7 L 13.8 16 L 9 13.3 L 4.2 16 L 5.3 10.7 L 1.4 7 L 6.7 6.4 Z" />
+        </g>
+      )
+    case 'check':
+      return (
+        <g transform={`translate(${x}, ${y})`} {...common}>
+          <circle cx={9} cy={9.5} r={7.5} />
+          <path d="M 5.5 9.7 l 2.4 2.5 L 12.7 7" />
+        </g>
+      )
+    case 'chart':
+      return (
+        <g transform={`translate(${x}, ${y})`} {...common}>
+          <path d="M 2 2 V 17 H 17" />
+          <path d="M 5.5 13.5 V 9" />
+          <path d="M 9.5 13.5 V 5.5" />
+          <path d="M 13.5 13.5 V 7.5" />
+        </g>
+      )
+    case 'globe':
+      return (
+        <g transform={`translate(${x}, ${y})`} {...common}>
+          <circle cx={9} cy={9.5} r={7.5} />
+          <ellipse cx={9} cy={9.5} rx={3.4} ry={7.5} />
+          <path d="M 1.8 9.5 H 16.2" />
+        </g>
+      )
+    default: // 'award'
+      return (
+        <g transform={`translate(${x}, ${y})`} {...common}>
+          <circle cx={9} cy={7} r={5} />
+          <path d="M 6.2 11.2 L 4.8 17 L 9 14.6 L 13.2 17 L 11.8 11.2" />
+        </g>
+      )
+  }
+}
+
+/** Win-theme banner strip above the graphic. */
+function WinThemeBar({ wt }: { wt: NonNullable<Layout['winTheme']> }) {
+  return (
+    <g>
+      <rect x={wt.x} y={wt.y} width={wt.w} height={wt.h} rx={6} fill={variantFill.primary.fill} />
+      <rect x={wt.x} y={wt.y} width={5} height={wt.h} rx={2.5} fill="url(#skyGradient)" />
+      {wt.lines.map((ln, i) => (
+        <text
+          key={i}
+          x={wt.x + 18}
+          y={wt.y + 11 + (i + 1) * 20 - 6}
+          fontSize={14}
+          fontWeight={700}
+          fill={brand.white}
+          fontFamily={brand.fontFamily}
+        >
+          {ln}
+        </text>
+      ))}
+    </g>
+  )
+}
+
+/** Icon-based stat strip beneath the graphic. */
+function StatStrip({ st }: { st: NonNullable<Layout['stats']> }) {
+  return (
+    <g fontFamily={brand.fontFamily}>
+      {st.tiles.map((t, i) => {
+        const iconW = t.icon ? 26 : 0
+        return (
+          <g key={i}>
+            {i > 0 && <line x1={t.x} y1={st.y + 6} x2={t.x} y2={st.y + st.h - 6} stroke="#D8D8E2" strokeWidth={1} />}
+            {t.icon && <StatGlyph icon={t.icon} x={t.x + 18} y={st.y + 6} />}
+            <text x={t.x + 18 + iconW} y={st.y + 24} fontSize={21} fontWeight={700} fill={brand.comm}>
+              {t.value}
+            </text>
+            <text x={t.x + 18} y={st.y + 44} fontSize={10.5} letterSpacing="0.3" fill={brand.detailText}>
+              {t.label.toUpperCase()}
+            </text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/** Customer / PWS pull-quote callout beneath the graphic. */
+function QuoteBox({ q }: { q: NonNullable<Layout['quote']> }) {
+  return (
+    <g fontFamily={brand.fontFamily}>
+      <rect x={q.x} y={q.y} width={3.5} height={q.h - 4} rx={1.75} fill={brand.skyGradient[1]} />
+      {q.lines.map((ln, i) => (
+        <text key={i} x={q.x + 16} y={q.y + (i + 1) * 18 - 4} fontSize={12.5} fontStyle="italic" fill={brand.heading}>
+          {ln}
+        </text>
+      ))}
+      {q.source && (
+        <text x={q.x + 16} y={q.y + q.lines.length * 18 + 12} fontSize={10.5} fill="#8b86a0">
+          {`— ${q.source}`}
+        </text>
+      )}
+    </g>
+  )
+}
+
+/** Title + accent bar, stats, pull quote, and caption — chrome that lives in
+ *  the (win-theme-shifted) content group of every renderer. */
 function ChartChrome({ layout }: { layout: Layout }) {
-  const { title, caption, banner, width, height } = layout
+  const { title, caption, stats, quote } = layout
   return (
     <>
       {title && (
@@ -752,7 +892,20 @@ function ChartChrome({ layout }: { layout: Layout }) {
           <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
         </g>
       )}
+      {stats && <StatStrip st={stats} />}
+      {quote && <QuoteBox q={quote} />}
       {caption && <CaptionText caption={caption} />}
+    </>
+  )
+}
+
+/** Chrome drawn OUTSIDE the shifted content group: the win-theme strip pinned
+ *  to the top, and the full-canvas classification banners. */
+function OverlayChrome({ layout }: { layout: Layout }) {
+  const { winTheme, banner, width, height } = layout
+  return (
+    <>
+      {winTheme && <WinThemeBar wt={winTheme} />}
       {banner && <BannerBars text={banner} width={width} height={height} />}
     </>
   )
@@ -831,6 +984,7 @@ function RiskSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
         </marker>
       </defs>
       <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+      <g transform={`translate(0, ${layout.contentShift})`}>
 
       {/* Matrix cells (small white gaps read as the grid). */}
       {rc.cells.map((c) => (
@@ -998,6 +1152,8 @@ function RiskSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
       )}
 
       <ChartChrome layout={layout} />
+      </g>
+      <OverlayChrome layout={layout} />
     </svg>
   )
 }
@@ -1044,6 +1200,7 @@ function XYSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
         </linearGradient>
       </defs>
       <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+      <g transform={`translate(0, ${layout.contentShift})`}>
 
       {/* Horizontal gridlines + y tick labels. */}
       {xc.yTicks.map((t, i) => (
@@ -1197,6 +1354,8 @@ function XYSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
       )}
 
       <ChartChrome layout={layout} />
+      </g>
+      <OverlayChrome layout={layout} />
     </svg>
   )
 }
@@ -1207,7 +1366,7 @@ export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, aria
   if (layout.table) return <TableSvg {...dataProps} />
   if (layout.risk) return <RiskSvg {...dataProps} />
   if (layout.xy) return <XYSvg {...dataProps} />
-  const { placed, connectors, zones, comms, legend, title, compliance, caption, banner, width, height } = layout
+  const { placed, connectors, zones, comms, legend, compliance, width, height } = layout
   const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
   const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {
     if (!compliance || !(p.node.refs?.length)) return null
@@ -1234,6 +1393,7 @@ export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, aria
         </linearGradient>
       </defs>
       <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+      <g transform={`translate(0, ${layout.contentShift})`}>
 
       {zones.map((z) =>
         z.group.style === 'dashed' ? (
@@ -1396,26 +1556,9 @@ export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, aria
         </g>
       )}
 
-      {title && (
-        <g>
-          {/* Headlines are all-caps per the Astrion brand standards. */}
-          <text
-            x={title.x}
-            y={title.y}
-            fontSize={20}
-            fontWeight={700}
-            fill={brand.heading}
-            fontFamily={brand.fontFamily}
-          >
-            {title.text.toUpperCase()}
-          </text>
-          {/* Sky-gradient bar (Refraction first, per the brand standards),
-              sized to match the headline width above it. */}
-          <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
-        </g>
-      )}
-      {caption && <CaptionText caption={caption} />}
-      {banner && <BannerBars text={banner} width={width} height={height} />}
+      <ChartChrome layout={layout} />
+      </g>
+      <OverlayChrome layout={layout} />
     </svg>
   )
 }

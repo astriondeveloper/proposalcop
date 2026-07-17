@@ -1243,6 +1243,13 @@ function keyPersonnel(): OrgChart {
     meta: {
       title: 'Key Personnel',
       showTitle: true,
+      winTheme: 'The team the customer already trusts — every key position filled, cleared, and on site at award.',
+      stats: [
+        { value: '180+', label: 'cleared staff in place', icon: 'people' },
+        { value: '95%', label: 'incumbent capture', icon: 'check' },
+        { value: '4', label: 'similar programs led', icon: 'award' },
+        { value: '47 yrs', label: 'combined key-person tenure', icon: 'clock' },
+      ],
       caption:
         'Every RFP-required key person is named, cleared, and already working this mission — no contingent hires, no learning curve on day one.',
     },
@@ -1633,6 +1640,11 @@ function currentVsFuture(): OrgChart {
     meta: {
       title: 'Current State vs. Future State',
       showTitle: true,
+      winTheme: 'Modernization without disruption: every gain lands while operations continue uninterrupted.',
+      quote: {
+        text: 'The Government seeks innovative approaches that improve availability while reducing total ownership cost.',
+        source: 'PWS §1.2, Objectives',
+      },
       caption:
         'Each future-state capability is funded, scheduled in the IMS, and proven on a referenced contract — this is a transition plan, not a vision statement.',
     },

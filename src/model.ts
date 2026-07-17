@@ -402,6 +402,14 @@ export interface OrgChart {
     /** Classification / CUI marking rendered as top + bottom banners and carried
      *  into exports (e.g. "CUI", "UNCLASSIFIED//FOUO"). */
     banner?: string
+    /** Win-theme banner strip rendered above the graphic (the message the
+     *  evaluator should take away). */
+    winTheme?: string
+    /** Icon-based stat strip rendered beneath the graphic (headcount, past
+     *  performance numbers, footprint...). */
+    stats?: StatItem[]
+    /** Customer / PWS pull quote rendered as a callout beneath the graphic. */
+    quote?: PullQuote
   }
   /** Independent trees/columns laid out left to right. */
   roots: OrgNode[]
@@ -418,6 +426,61 @@ export interface OrgChart {
   risk?: RiskCube
   /** Line / area / bar series, used by the 'xy' layout. */
   xy?: XYChart
+}
+
+/* ---------------------------------------------------- persuasion elements */
+
+/** Built-in glyphs for the stat strip, drawn by the renderer (brand-locked —
+ *  no arbitrary images). */
+export type StatIcon = 'people' | 'clock' | 'shield' | 'star' | 'check' | 'chart' | 'globe' | 'award'
+
+export const STAT_ICONS: StatIcon[] = ['people', 'clock', 'shield', 'star', 'check', 'chart', 'globe', 'award']
+
+/** One tile in the stat strip: a big number with a label, e.g. "99.9%" /
+ *  "system availability". */
+export interface StatItem {
+  value: string
+  label: string
+  icon?: StatIcon
+}
+
+/** A customer / PWS pull quote rendered as a callout beneath the graphic. */
+export interface PullQuote {
+  text: string
+  /** Attribution, e.g. "PWS §3.2" or "CPARS, FY24". */
+  source?: string
+}
+
+function isStatIcon(v: unknown): v is StatIcon {
+  return typeof v === 'string' && (STAT_ICONS as string[]).includes(v)
+}
+
+/** Validate a stat strip from untrusted input: keep items with any text,
+ *  drop unknown icons. Returns undefined when nothing valid remains. */
+export function normalizeStats(input: unknown): StatItem[] | undefined {
+  if (!Array.isArray(input)) return undefined
+  const out: StatItem[] = []
+  for (const s of input) {
+    if (!s || typeof s !== 'object') continue
+    const value = typeof (s as StatItem).value === 'string' ? (s as StatItem).value.trim() : ''
+    const label = typeof (s as StatItem).label === 'string' ? (s as StatItem).label.trim() : ''
+    if (!value && !label) continue
+    const item: StatItem = { value, label }
+    if (isStatIcon((s as StatItem).icon)) item.icon = (s as StatItem).icon
+    out.push(item)
+  }
+  return out.length ? out : undefined
+}
+
+/** Validate a pull quote from untrusted input. */
+export function normalizeQuote(input: unknown): PullQuote | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const text = typeof (input as PullQuote).text === 'string' ? (input as PullQuote).text.trim() : ''
+  if (!text) return undefined
+  const out: PullQuote = { text }
+  const source = (input as PullQuote).source
+  if (typeof source === 'string' && source.trim()) out.source = source.trim()
+  return out
 }
 
 /* ------------------------------------------------- data-element selection */
@@ -818,12 +881,17 @@ export function normalizeChart(input: unknown): OrgChart {
       ...(c.meta?.showWbsNumbers === true ? { showWbsNumbers: true } : {}),
       ...(typeof c.meta?.caption === 'string' && c.meta.caption.trim() ? { caption: c.meta.caption } : {}),
       ...(typeof c.meta?.banner === 'string' && c.meta.banner.trim() ? { banner: c.meta.banner } : {}),
+      ...(typeof c.meta?.winTheme === 'string' && c.meta.winTheme.trim() ? { winTheme: c.meta.winTheme } : {}),
     },
     roots: c.roots as OrgNode[],
     groups: Array.isArray(c.groups) ? c.groups : [],
     comms: Array.isArray(c.comms) ? c.comms.map(normalizeEdge) : [],
     legend: Array.isArray(c.legend) ? c.legend : [],
   }
+  const stats = normalizeStats(c.meta?.stats)
+  if (stats) chart.meta.stats = stats
+  const quote = normalizeQuote(c.meta?.quote)
+  if (quote) chart.meta.quote = quote
   const compliance = normalizeCompliance(c.compliance)
   if (compliance) chart.compliance = compliance
   const schedule = normalizeSchedule(c.schedule)

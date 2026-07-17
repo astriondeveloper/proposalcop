@@ -836,6 +836,17 @@ body,
   flex-shrink: 0;
 }
 
+/* Persuasion editor: compact stat-strip inputs. */
+.detail-row .stat-icon {
+  width: 92px;
+  flex-shrink: 0;
+}
+
+.detail-row .stat-value {
+  width: 72px;
+  flex-shrink: 0;
+}
+
 .risk-pill {
   flex: 1;
   font-size: 0.74em;
