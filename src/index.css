@@ -807,6 +807,29 @@ body,
   gap: 6px;
 }
 
+/* Table editor: row badges + compact per-cell controls. */
+.row-tag {
+  flex: 1;
+  font-size: 0.78em;
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.detail-row .cell-col {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82em;
+  color: var(--muted);
+}
+
+.detail-row .status-pick {
+  width: 86px;
+  flex-shrink: 0;
+}
+
 .member-list {
   max-height: 150px;
   overflow-y: auto;

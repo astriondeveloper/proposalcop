@@ -636,6 +636,101 @@ export function normalizeTable(input: unknown): TableDef | undefined {
   return out
 }
 
+/* ------------------------------------------------- table editing helpers */
+
+/** A small starter grid for a chart that just switched to the table layout. */
+export function emptyTable(): TableDef {
+  return {
+    columns: [
+      { label: 'Item', width: 180, align: 'left' },
+      { label: 'Column B' },
+      { label: 'Column C' },
+    ],
+    rows: [
+      { cells: [{ text: '' }, { text: '' }, { text: '' }] },
+      { cells: [{ text: '' }, { text: '' }, { text: '' }] },
+    ],
+  }
+}
+
+/** Pad a data row's cells to the column count so positional edits (move /
+ *  remove column) stay aligned. Section-header rows keep their single cell. */
+function padRow(row: TableRow, columns: number): TableRow {
+  if (row.header) return row
+  const cells = [...row.cells]
+  while (cells.length < columns) cells.push({ text: '' })
+  return { ...row, cells }
+}
+
+/** Insert a column at `at` (default: append). Data rows gain an empty cell. */
+export function tableAddColumn(t: TableDef, at = t.columns.length): TableDef {
+  const next = clone(t)
+  const i = Math.max(0, Math.min(next.columns.length, at))
+  next.columns.splice(i, 0, { label: `Column ${String.fromCharCode(65 + (next.columns.length % 26))}` })
+  next.rows = next.rows.map((r) => {
+    if (r.header) return r
+    const row = padRow(r, next.columns.length - 1)
+    row.cells.splice(i, 0, { text: '' })
+    return row
+  })
+  return next
+}
+
+/** Remove column `i`. Refused (returned unchanged) for the last column. */
+export function tableRemoveColumn(t: TableDef, i: number): TableDef {
+  if (t.columns.length <= 1 || i < 0 || i >= t.columns.length) return t
+  const next = clone(t)
+  next.columns.splice(i, 1)
+  next.rows = next.rows.map((r) => {
+    if (r.header) return r
+    const row = padRow(r, next.columns.length + 1)
+    row.cells.splice(i, 1)
+    return row
+  })
+  return next
+}
+
+/** Swap column `i` with its neighbor in `dir`, carrying every data cell. */
+export function tableMoveColumn(t: TableDef, i: number, dir: -1 | 1): TableDef {
+  const j = i + dir
+  if (i < 0 || i >= t.columns.length || j < 0 || j >= t.columns.length) return t
+  const next = clone(t)
+  ;[next.columns[i], next.columns[j]] = [next.columns[j], next.columns[i]]
+  next.rows = next.rows.map((r) => {
+    if (r.header) return r
+    const row = padRow(r, next.columns.length)
+    ;[row.cells[i], row.cells[j]] = [row.cells[j], row.cells[i]]
+    return row
+  })
+  return next
+}
+
+/** Insert a row at `at` (default: append) — a data row, or a section header. */
+export function tableAddRow(t: TableDef, at = t.rows.length, header = false): TableDef {
+  const next = clone(t)
+  const i = Math.max(0, Math.min(next.rows.length, at))
+  const row: TableRow = header
+    ? { header: true, cells: [{ text: 'Section' }] }
+    : { cells: next.columns.map(() => ({ text: '' })) }
+  next.rows.splice(i, 0, row)
+  return next
+}
+
+export function tableRemoveRow(t: TableDef, i: number): TableDef {
+  if (i < 0 || i >= t.rows.length) return t
+  const next = clone(t)
+  next.rows.splice(i, 1)
+  return next
+}
+
+export function tableMoveRow(t: TableDef, i: number, dir: -1 | 1): TableDef {
+  const j = i + dir
+  if (i < 0 || i >= t.rows.length || j < 0 || j >= t.rows.length) return t
+  const next = clone(t)
+  ;[next.rows[i], next.rows[j]] = [next.rows[j], next.rows[i]]
+  return next
+}
+
 /** Validate a schedule config from untrusted input. Keeps a known unit, a
  *  finite positive span if present, and well-formed phase markers. */
 export function normalizeSchedule(input: unknown): Schedule | undefined {

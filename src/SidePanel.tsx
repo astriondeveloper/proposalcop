@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type {
   BadgeType,
+  CellStatus,
   CommLink,
   Direction,
   EdgeArrow,
@@ -13,6 +14,7 @@ import type {
   RefKind,
   Requirement,
   SchedulePhase,
+  TableDef,
   Variant,
 } from './model'
 import {
@@ -24,11 +26,18 @@ import {
   clone,
   deleteNode,
   edgeArrow,
+  emptyTable,
   findNode,
   moveNode,
   normalizeChart,
   REF_KINDS,
   setNodePos,
+  tableAddColumn,
+  tableAddRow,
+  tableMoveColumn,
+  tableMoveRow,
+  tableRemoveColumn,
+  tableRemoveRow,
   uid,
   updateNode,
 } from './model'
@@ -435,6 +444,162 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
   )
 }
 
+const CELL_STATUS_OPTIONS: { value: '' | CellStatus; label: string }[] = [
+  { value: '', label: '· none' },
+  { value: 'good', label: '✓ Good (green)' },
+  { value: 'warn', label: '! Warn (amber)' },
+  { value: 'bad', label: '✕ Bad (red)' },
+  { value: 'info', label: 'i Info (blue)' },
+]
+
+const COLUMN_ALIGNS: { value: 'left' | 'center' | 'right'; label: string }[] = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Center' },
+  { value: 'right', label: 'Right' },
+]
+
+/** Visual editor for the 'table' layout (RACI, QASP/SLA, L-to-M crosswalk...):
+ *  columns, rows, per-cell text and status — no JSON required. */
+function TableEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
+  const table = chart.table
+  const setTable = (next: TableDef) => onChange({ ...chart, table: next })
+
+  if (!table) {
+    return (
+      <div className="editor">
+        <p className="hint">This chart uses the table layout but has no table yet.</p>
+        <button onClick={() => setTable(emptyTable())}>Create a starter table</button>
+      </div>
+    )
+  }
+
+  const patchColumn = (ci: number, p: Partial<TableDef['columns'][number]>) => {
+    const next = clone(table)
+    next.columns[ci] = { ...next.columns[ci], ...p }
+    setTable(next)
+  }
+  const patchCell = (ri: number, ci: number, p: { text?: string; status?: CellStatus | undefined }) => {
+    const next = clone(table)
+    const row = next.rows[ri]
+    while (row.cells.length <= ci) row.cells.push({ text: '' })
+    const cell = { ...row.cells[ci], ...p }
+    if (!p.status) delete cell.status
+    row.cells[ci] = cell
+    setTable(next)
+  }
+
+  return (
+    <div className="editor">
+      <fieldset>
+        <legend>Columns ({table.columns.length})</legend>
+        {table.columns.map((c, ci) => (
+          <div key={ci} className="card">
+            <div className="detail-row">
+              <input
+                value={c.label}
+                placeholder={`Column ${ci + 1}`}
+                aria-label={`Column ${ci + 1} label`}
+                onChange={(e) => patchColumn(ci, { label: e.target.value })}
+              />
+              <button className="sm" title="Move column left" disabled={ci === 0} onClick={() => setTable(tableMoveColumn(table, ci, -1))}>←</button>
+              <button className="sm" title="Move column right" disabled={ci === table.columns.length - 1} onClick={() => setTable(tableMoveColumn(table, ci, 1))}>→</button>
+              <button
+                className="danger sm"
+                aria-label={`Remove column ${c.label || ci + 1}`}
+                disabled={table.columns.length <= 1}
+                onClick={() => setTable(tableRemoveColumn(table, ci))}
+              >×</button>
+            </div>
+            <div className="two-col">
+              <label>Width (blank = auto)
+                <input
+                  type="number"
+                  value={c.width ?? ''}
+                  placeholder="auto"
+                  onChange={(e) => patchColumn(ci, { width: e.target.value ? Math.max(40, Number(e.target.value)) : undefined })}
+                />
+              </label>
+              <label>Align
+                <select
+                  value={c.align ?? (ci === 0 ? 'left' : 'center')}
+                  onChange={(e) => patchColumn(ci, { align: e.target.value as 'left' | 'center' | 'right' })}
+                >
+                  {COLUMN_ALIGNS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
+        ))}
+        <button onClick={() => setTable(tableAddColumn(table))}>+ Column</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Rows ({table.rows.length})</legend>
+        {table.rows.map((r, ri) => (
+          <div key={ri} className="card">
+            <div className="detail-row">
+              <span className="row-tag">{r.header ? 'Section' : `Row ${ri + 1}`}</span>
+              <button className="sm" title="Move row up" disabled={ri === 0} onClick={() => setTable(tableMoveRow(table, ri, -1))}>↑</button>
+              <button className="sm" title="Move row down" disabled={ri === table.rows.length - 1} onClick={() => setTable(tableMoveRow(table, ri, 1))}>↓</button>
+              <button
+                className="danger sm"
+                aria-label={`Remove row ${ri + 1}`}
+                onClick={() => setTable(tableRemoveRow(table, ri))}
+              >×</button>
+            </div>
+            {r.header ? (
+              <input
+                value={r.cells[0]?.text ?? ''}
+                placeholder="Section heading"
+                aria-label={`Section heading for row ${ri + 1}`}
+                onChange={(e) => patchCell(ri, 0, { text: e.target.value })}
+              />
+            ) : (
+              table.columns.map((c, ci) => (
+                <div key={ci} className="detail-row">
+                  <span className="detail-label cell-col" title={c.label}>{c.label || `Col ${ci + 1}`}</span>
+                  <input
+                    className="detail-text"
+                    value={r.cells[ci]?.text ?? ''}
+                    aria-label={`${c.label || `Column ${ci + 1}`}, row ${ri + 1}`}
+                    onChange={(e) => patchCell(ri, ci, { text: e.target.value })}
+                  />
+                  <select
+                    className="status-pick"
+                    value={r.cells[ci]?.status ?? ''}
+                    aria-label={`Status for ${c.label || `column ${ci + 1}`}, row ${ri + 1}`}
+                    title="Cell status tint"
+                    onChange={(e) => patchCell(ri, ci, { status: (e.target.value || undefined) as CellStatus | undefined })}
+                  >
+                    {CELL_STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+              ))
+            )}
+          </div>
+        ))}
+        <div className="btn-row">
+          <button onClick={() => setTable(tableAddRow(table))}>+ Row</button>
+          <button onClick={() => setTable(tableAddRow(table, table.rows.length, true))}>+ Section row</button>
+        </div>
+      </fieldset>
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={table.zebra !== false}
+          onChange={(e) => setTable({ ...clone(table), zebra: e.target.checked ? undefined : false })}
+        />
+        Zebra striping (alternate row shading)
+      </label>
+      <p className="hint">
+        Status tints color a cell green / amber / red / blue — used for RACI roles, QASP ratings,
+        and crosswalk status columns.
+      </p>
+    </div>
+  )
+}
+
 function ChartEditor({ chart, onChange, onSelect }: Props) {
   const nodes = allNodes(chart)
   const options = nodes
@@ -512,14 +677,21 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
       <label>Layout
         <select
           value={chart.meta.layout ?? 'tree'}
-          onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, layout: e.target.value as LayoutMode } })}
+          onChange={(e) => {
+            const layout = e.target.value as LayoutMode
+            const next = { ...chart, meta: { ...chart.meta, layout } }
+            // Seed an empty grid when switching to a data layout for the first
+            // time, so the canvas (and its editor tab) has something to show.
+            if (layout === 'table' && !chart.table) next.table = emptyTable()
+            onChange(next)
+          }}
         >
           {LAYOUT_MODES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
         </select>
       </label>
       {chart.meta.layout === 'table' && (
         <p className="hint">
-          This is a table. Start from a table template, then edit its columns and rows in the JSON tab.
+          This is a table. Edit its columns, rows and cell statuses in the <b>Table</b> tab.
         </p>
       )}
       <label>Flow direction
@@ -1180,6 +1352,11 @@ export function SidePanel({
 }: Props & { width: number } & LibraryProps) {
   const [tab, setTab] = useState<'build' | 'chart' | 'compliance' | 'library' | 'json'>('build')
 
+  // The first tab edits the chart's content, so it follows the layout mode:
+  // boxes for node layouts, the grid editor for tables. Its label matches.
+  const layoutMode = props.chart.meta.layout ?? 'tree'
+  const buildLabel = layoutMode === 'table' ? 'Table' : 'Boxes'
+
   // Selecting a box anywhere (including clicking it in the chart) jumps the
   // panel to the Boxes tab so its editor and tree row are shown immediately.
   useEffect(() => {
@@ -1195,18 +1372,21 @@ export function SidePanel({
       style={{ width, minWidth: width, maxWidth: width, fontSize: `${fontSize}px` }}
     >
       <div className="tabs" role="group" aria-label="Editor sections">
-        <button aria-pressed={tab === 'build'} className={tab === 'build' ? 'active' : ''} onClick={() => setTab('build')}>Boxes</button>
+        <button aria-pressed={tab === 'build'} className={tab === 'build' ? 'active' : ''} onClick={() => setTab('build')}>{buildLabel}</button>
         <button aria-pressed={tab === 'chart'} className={tab === 'chart' ? 'active' : ''} onClick={() => setTab('chart')}>Chart</button>
         <button aria-pressed={tab === 'compliance'} className={tab === 'compliance' ? 'active' : ''} onClick={() => setTab('compliance')}>Compliance</button>
         <button aria-pressed={tab === 'library'} className={tab === 'library' ? 'active' : ''} onClick={() => setTab('library')}>Library</button>
         <button aria-pressed={tab === 'json'} className={tab === 'json' ? 'active' : ''} onClick={() => setTab('json')}>JSON</button>
       </div>
-      {tab === 'build' && (
-        <>
-          <NodeTree chart={props.chart} selectedId={props.selectedId} onSelect={props.onSelect} />
-          <NodeEditor {...props} />
-        </>
-      )}
+      {tab === 'build' &&
+        (layoutMode === 'table' ? (
+          <TableEditor chart={props.chart} onChange={props.onChange} />
+        ) : (
+          <>
+            <NodeTree chart={props.chart} selectedId={props.selectedId} onSelect={props.onSelect} />
+            <NodeEditor {...props} />
+          </>
+        ))}
       {tab === 'chart' && <ChartEditor {...props} />}
       {tab === 'compliance' && <ComplianceEditor {...props} />}
       {tab === 'library' && (
