@@ -5,6 +5,16 @@ import type { ZoneStyle } from './theme'
  *  free-standing columns (no box is drawn; children are laid out from it). */
 export type Variant = 'primary' | 'secondary' | 'tertiary' | 'accent' | 'hidden'
 
+/** Architecture-diagram shapes a box can take (the 'box' default is the
+ *  classic org-chart rectangle). Rendered in every node layout. */
+export type NodeShape = 'box' | 'pill' | 'cylinder' | 'cloud' | 'diamond'
+
+export const NODE_SHAPES: NodeShape[] = ['box', 'pill', 'cylinder', 'cloud', 'diamond']
+
+export function isNodeShape(v: unknown): v is NodeShape {
+  return typeof v === 'string' && (NODE_SHAPES as string[]).includes(v)
+}
+
 export type BadgeType = 'keyGold' | 'keyGray' | 'cornerAccent'
 
 export type LegendMarker =
@@ -76,6 +86,9 @@ export interface OrgNode {
   refs?: NodeRef[]
   badges?: BadgeType[]
   variant: Variant
+  /** Architecture shape (default 'box'): pill, database cylinder, cloud, or
+   *  decision diamond. */
+  shape?: NodeShape
   /** Optional fill override (hex). Wins over the variant color; text color is
    *  picked automatically for contrast. Clear it to fall back to the variant. */
   color?: string
@@ -160,7 +173,9 @@ export type Direction = 'TB' | 'BT' | 'LR' | 'RL'
  *  - 'xy'       an X-Y chart: line / area / bar series over numeric axes
  *  - 'cycle'    a circular loop of steps (PDCA, continuous improvement)
  *  - 'pipeline' left-to-right chevron stages (DevSecOps, lifecycle phases)
- *  - 'stack'    full-width layers (technology stack) */
+ *  - 'stack'    full-width layers (technology stack)
+ *  - 'free'     free-form diagramming: manual placement + explicit edges
+ *               (system architecture, network topology, data flow) */
 export type LayoutMode =
   | 'tree'
   | 'radial'
@@ -174,6 +189,7 @@ export type LayoutMode =
   | 'cycle'
   | 'pipeline'
   | 'stack'
+  | 'free'
 
 /** Optional status coloring for a table cell (green / amber / red / blue tint). */
 export type CellStatus = 'good' | 'warn' | 'bad' | 'info'
@@ -714,6 +730,8 @@ const BRAND_COLORS = new Set<string>(Object.values(palette).map((c) => c.toUpper
 export function sanitizeColors(chart: OrgChart): OrgChart {
   visit(chart.roots, (n) => {
     if (n.color && !BRAND_COLORS.has(n.color.toUpperCase())) delete n.color
+    // Unknown shapes from hand-edited or imported files fall back to the box.
+    if (n.shape !== undefined && !isNodeShape(n.shape)) delete n.shape
   })
   return chart
 }
@@ -944,6 +962,7 @@ export function normalizeChart(input: unknown): OrgChart {
     'cycle',
     'pipeline',
     'stack',
+    'free',
   ]
   const layoutOk = typeof layout === 'string' && LAYOUTS.includes(layout)
   const chart: OrgChart = {

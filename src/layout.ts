@@ -543,7 +543,10 @@ function measureNode(node: OrgNode, vertical: boolean): Measured {
       titleLines.length * M.titleLineH +
       (node.name ? M.nameLineH : 0) +
       (bulletLines.length ? 6 + bulletLines.length * M.bulletLineH : 0)
-    headerH = Math.max(headerH, node.photo ? 52 : M.minHeaderH)
+    // Architecture shapes need headroom for their silhouettes to read.
+    const shapeMin =
+      node.shape === 'cloud' || node.shape === 'diamond' ? 58 : node.shape === 'cylinder' ? 54 : 0
+    headerH = Math.max(headerH, node.photo ? 52 : M.minHeaderH, shapeMin)
   }
 
   const detailBlocks: DetailBlock[] = []
@@ -828,15 +831,28 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
     })
   }
 
-  // Edges (communication / graph connections).
+  // Edges (communication / graph connections). Edges sharing a node pair
+  // (e.g. a flow and its rework return) fan their labels out vertically so
+  // they never stack on the same midpoint.
   const comms: CommPath[] = []
+  const pairCount = new Map<string, number>()
+  const pairKey = (l: CommLink) => [l.fromId, l.toId].sort().join('→')
+  for (const link of chart.comms) {
+    const k = pairKey(link)
+    pairCount.set(k, (pairCount.get(k) ?? 0) + 1)
+  }
+  const pairSeen = new Map<string, number>()
   for (const link of chart.comms) {
     const a = boxOf(byId, link.fromId)
     const b = boxOf(byId, link.toId)
     if (a && b) {
+      const k = pairKey(link)
+      const idx = pairSeen.get(k) ?? 0
+      pairSeen.set(k, idx + 1)
+      const n = pairCount.get(k)!
       const labelPos = {
         x: (a.x + a.w / 2 + b.x + b.w / 2) / 2,
-        y: (a.y + a.h / 2 + b.y + b.h / 2) / 2,
+        y: (a.y + a.h / 2 + b.y + b.h / 2) / 2 + (idx - (n - 1) / 2) * 20,
       }
       comms.push({ link, path: routeComm(a, b), labelPos })
     }
@@ -978,7 +994,9 @@ function hierarchyConnectors(chart: OrgChart, placed: PlacedNode[]): string[] {
  */
 export function previewDrag(chart: OrgChart, base: Layout, id: string, x: number, y: number): Layout {
   const placed = base.placed.map((p) => (p.node.id === id ? { ...p, x, y } : p))
-  return assemble(chart, placed, hierarchyConnectors(chart, placed))
+  // Free-form charts draw no hierarchy connectors — edges only.
+  const conns = chart.meta.layout === 'free' ? [] : hierarchyConnectors(chart, placed)
+  return assemble(chart, placed, conns)
 }
 
 /* ------------------------------------------------------------- radial */
@@ -1923,6 +1941,48 @@ function layoutXY(chart: OrgChart): Layout {
   return finishDataLayout(chart, right, bottom, { xy: xyLayout })
 }
 
+/* --------------------------------------------------------- free-form */
+
+const FREE_GRID_COLS = 4
+const FREE_GRID_GAP_X = 60
+const FREE_GRID_GAP_Y = 56
+
+/**
+ * Free-form diagramming (system architecture, network topology, data flow):
+ * every visible box sits at its manual position; boxes without one are dealt
+ * onto a deterministic grid so they never stack. The tree structure is purely
+ * organizational here — no hierarchy connectors are drawn; every connection
+ * is an explicit labeled edge, routed by assemble() like any other.
+ */
+function layoutFree(chart: OrgChart): Layout {
+  const model = collectVisible(chart)
+  const { nodes, measured } = model
+  if (!nodes.length) return assemble(chart, [], [])
+
+  const ox = M.canvasPad
+  const oy = M.canvasPad + (chart.meta.showTitle && chart.meta.title.trim() ? 44 : 0)
+
+  // Deal unpositioned boxes onto a grid sized from the largest box, below the
+  // lowest manually-placed content so new boxes appear in clear space.
+  const placedBottom = nodes.reduce(
+    (b, n) => (n.pos ? Math.max(b, n.pos.y + measured.get(n.id)!.totalH) : b),
+    0,
+  )
+  const cellW = Math.max(...nodes.map((n) => measured.get(n.id)!.w)) + FREE_GRID_GAP_X
+  const cellH =
+    Math.max(...nodes.map((n) => measured.get(n.id)!.totalH)) + FREE_GRID_GAP_Y
+  let slot = 0
+  const placed: PlacedNode[] = nodes.map((n) => {
+    const m = measured.get(n.id)!
+    if (n.pos) return placeBox(n, m, n.pos.x, n.pos.y)
+    const col = slot % FREE_GRID_COLS
+    const row = Math.floor(slot / FREE_GRID_COLS)
+    slot += 1
+    return placeBox(n, m, ox + col * cellW, (placedBottom ? placedBottom + FREE_GRID_GAP_Y : oy) + row * cellH)
+  })
+  return assemble(chart, placed, [])
+}
+
 /* ---------------------------------------- flow (cycle / pipeline / stack) */
 
 const FLOW_VARIANT_ROTATION = ['primary', 'secondary', 'tertiary', 'accent'] as const
@@ -2134,6 +2194,7 @@ export function layoutChart(input: OrgChart): Layout {
   if (mode === 'cycle') return layoutCycle(chart)
   if (mode === 'pipeline') return layoutPipeline(chart)
   if (mode === 'stack') return layoutStack(chart)
+  if (mode === 'free') return layoutFree(chart)
 
   const dir: Direction = chart.meta.direction ?? 'TB'
   const vertical = dir === 'TB' || dir === 'BT'

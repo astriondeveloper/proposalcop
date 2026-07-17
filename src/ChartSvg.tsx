@@ -108,6 +108,45 @@ function ComplianceBadge({ p, status }: { p: PlacedNode; status: 'ok' | 'orphan'
   )
 }
 
+/** The colored header silhouette for a box, by its architecture shape. All
+ *  shapes are plain SVG primitives so exports (including PPTX) stay native. */
+function HeaderShape({ p, fill }: { p: PlacedNode; fill: string }) {
+  const { x, y, w } = p
+  const h = p.headerH
+  const shape = p.node.shape ?? 'box'
+  if (shape === 'pill') return <rect x={x} y={y} width={w} height={h} rx={h / 2} fill={fill} />
+  if (shape === 'diamond') {
+    const cx = x + w / 2
+    const cy = y + h / 2
+    return <path d={`M ${cx} ${y} L ${x + w} ${cy} L ${cx} ${y + h} L ${x} ${cy} Z`} fill={fill} />
+  }
+  if (shape === 'cylinder') {
+    const ry = 10
+    return (
+      <g>
+        <path
+          d={`M ${x} ${y + ry} V ${y + h - ry} A ${w / 2} ${ry} 0 0 0 ${x + w} ${y + h - ry} V ${y + ry} Z`}
+          fill={fill}
+        />
+        <ellipse cx={x + w / 2} cy={y + ry} rx={w / 2} ry={ry} fill={fill} stroke="rgba(255,255,255,0.55)" strokeWidth={1.2} />
+      </g>
+    )
+  }
+  if (shape === 'cloud') {
+    // A cloud silhouette from overlapping primitives sharing one fill, so the
+    // PPTX transpiler exports it as native shapes too.
+    return (
+      <g fill={fill}>
+        <rect x={x + w * 0.06} y={y + h * 0.45} width={w * 0.88} height={h * 0.55} rx={h * 0.26} />
+        <circle cx={x + w * 0.32} cy={y + h * 0.44} r={h * 0.3} />
+        <circle cx={x + w * 0.55} cy={y + h * 0.34} r={h * 0.36} />
+        <circle cx={x + w * 0.74} cy={y + h * 0.46} r={h * 0.27} />
+      </g>
+    )
+  }
+  return <rect x={x} y={y} width={w} height={h} rx={M.boxRadius} fill={fill} />
+}
+
 function NodeBox({
   p,
   selected,
@@ -128,8 +167,11 @@ function NodeBox({
   const photo = p.node.photo
   const contentX = p.x + padX + (photo ? 38 : 0)
   const centerX = p.x + p.w / 2
+  const shape = p.node.shape ?? 'box'
 
   let ty = p.y + M.padY + M.titleLineH - 5
+  // Nudge cylinder content below the top ellipse.
+  if (shape === 'cylinder') ty += 7
   const contentH =
     p.titleLines.length * M.titleLineH +
     (p.node.name ? M.nameLineH : 0) +
@@ -253,15 +295,8 @@ function NodeBox({
       onClick={onSelect ? (e) => { e.stopPropagation(); onSelect(p.node.id) } : undefined}
       style={onSelect ? { cursor: onPointerDown ? 'move' : 'pointer' } : undefined}
     >
-      <rect
-        x={p.x}
-        y={p.y}
-        width={p.w}
-        height={p.headerH}
-        rx={M.boxRadius}
-        fill={v.fill}
-      />
-      {p.detailBlocks.length > 0 && (
+      <HeaderShape p={p} fill={v.fill} />
+      {p.detailBlocks.length > 0 && shape === 'box' && (
         // Square off the header's bottom corners when detail rows attach.
         <rect x={p.x} y={p.y + p.headerH - M.boxRadius} width={p.w} height={M.boxRadius} fill={v.fill} />
       )}

@@ -11,6 +11,7 @@ import type {
   FlowDef,
   FlowStep,
   LayoutMode,
+  NodeShape,
   LegendMarker,
   OrgChart,
   OrgNode,
@@ -126,6 +127,15 @@ const LAYOUT_MODES: { value: LayoutMode; label: string }[] = [
   { value: 'cycle', label: 'Cycle (PDCA loop)' },
   { value: 'pipeline', label: 'Pipeline (chevron stages)' },
   { value: 'stack', label: 'Stack (technology layers)' },
+  { value: 'free', label: 'Free-form (architecture / network)' },
+]
+
+const SHAPES: { value: NodeShape; label: string }[] = [
+  { value: 'box', label: 'Box (default)' },
+  { value: 'pill', label: 'Pill (actor / start-end)' },
+  { value: 'cylinder', label: 'Cylinder (database / store)' },
+  { value: 'cloud', label: 'Cloud (external / hosted)' },
+  { value: 'diamond', label: 'Diamond (decision / gate)' },
 ]
 
 const DIRECTIONS: { value: Direction; label: string }[] = [
@@ -275,6 +285,16 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           </select>
         </label>
       </div>
+      {!isTimeline && (
+        <label>Shape
+          <select
+            value={node.shape ?? 'box'}
+            onChange={(e) => patch({ shape: e.target.value === 'box' ? undefined : (e.target.value as NodeShape) })}
+          >
+            {SHAPES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </select>
+        </label>
+      )}
       <fieldset>
         <legend>Box color (Astrion brand)</legend>
         <div className="swatches">
@@ -1394,6 +1414,13 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           This is a {chart.meta.layout === 'cycle' ? 'cycle loop' : chart.meta.layout === 'pipeline' ? 'chevron pipeline' : 'layer stack'}.
           Edit its content in the <b>Steps</b> tab — the same steps re-render when you switch between
           Cycle, Pipeline and Stack.
+        </p>
+      )}
+      {chart.meta.layout === 'free' && (
+        <p className="hint">
+          Free-form: drag boxes anywhere on the canvas; no automatic reporting lines are drawn.
+          Connect boxes with labeled <b>Edges</b> below, give them architecture <b>Shapes</b> in the
+          Boxes tab, and group them with zones.
         </p>
       )}
       {isNodeGraph && (

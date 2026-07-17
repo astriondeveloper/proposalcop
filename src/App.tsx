@@ -703,7 +703,8 @@ export default function App() {
       const kind = view.flow.kind === 'cycle' ? 'cycle diagram' : view.flow.kind === 'pipeline' ? 'pipeline' : 'layer stack'
       return `${name} ${kind}, ${view.flow.steps.length} steps`
     }
-    return `${name} org chart, ${view.placed.length} ${view.placed.length === 1 ? 'box' : 'boxes'}`
+    const noun = chart.meta.layout === 'free' ? 'diagram' : 'org chart'
+    return `${name} ${noun}, ${view.placed.length} ${view.placed.length === 1 ? 'box' : 'boxes'}`
   })()
 
   return (
