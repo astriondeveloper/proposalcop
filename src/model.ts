@@ -155,8 +155,19 @@ export type Direction = 'TB' | 'BT' | 'LR' | 'RL'
  *  - 'matrix'   2D grid: rows = depth, columns = group (or root)
  *  - 'swimlane' independent vertical lanes, one per group (or root)
  *  - 'timeline' transition / phase-in schedule: tasks as bars on a time axis
- *  - 'table'    a branded grid (RACI, compliance crosswalk, QASP/SLA, ...) */
-export type LayoutMode = 'tree' | 'radial' | 'layered' | 'matrix' | 'swimlane' | 'timeline' | 'table'
+ *  - 'table'    a branded grid (RACI, compliance crosswalk, QASP/SLA, ...)
+ *  - 'risk'     a 5×5 likelihood × consequence risk cube with markers
+ *  - 'xy'       an X-Y chart: line / area / bar series over numeric axes */
+export type LayoutMode =
+  | 'tree'
+  | 'radial'
+  | 'layered'
+  | 'matrix'
+  | 'swimlane'
+  | 'timeline'
+  | 'table'
+  | 'risk'
+  | 'xy'
 
 /** Optional status coloring for a table cell (green / amber / red / blue tint). */
 export type CellStatus = 'good' | 'warn' | 'bad' | 'info'
@@ -185,6 +196,178 @@ export interface TableDef {
   rows: TableRow[]
   /** Alternate row shading. Default on. */
   zebra?: boolean
+}
+
+/* ----------------------------------------------------------- risk cube */
+
+/** A position on the 5×5 risk cube (both axes run 1–5). */
+export interface RiskPos {
+  likelihood: number
+  consequence: number
+}
+
+/** One entry in the risk register (drawn on the 'risk' layout). */
+export interface RiskItem {
+  id: string
+  /** Short marker label drawn on the cube (e.g. "R1"). Auto-numbered when blank. */
+  code?: string
+  title: string
+  likelihood: number
+  consequence: number
+  /** Post-mitigation (residual) position; draws an arrow from the current
+   *  position to this one. */
+  residual?: RiskPos
+}
+
+/** Configuration for the 'risk' layout: the risks plus optional axis titles. */
+export interface RiskCube {
+  risks: RiskItem[]
+  /** Axis titles. Default "Consequence" (x) and "Likelihood" (y). */
+  xLabel?: string
+  yLabel?: string
+}
+
+export type RiskLevel = 'low' | 'moderate' | 'high'
+
+/** Cell severity for the 5×5 cube, following the standard DoD-style risk
+ *  reporting matrix (row = likelihood 1–5, column = consequence 1–5). Encoded
+ *  as data so a customer-specific matrix is a one-table change. */
+const RISK_MATRIX: RiskLevel[][] = [
+  ['low', 'low', 'low', 'moderate', 'moderate'], // likelihood 1
+  ['low', 'low', 'moderate', 'moderate', 'moderate'], // likelihood 2
+  ['low', 'moderate', 'moderate', 'moderate', 'high'], // likelihood 3
+  ['moderate', 'moderate', 'moderate', 'high', 'high'], // likelihood 4
+  ['moderate', 'moderate', 'high', 'high', 'high'], // likelihood 5
+]
+
+/** Clamp a scale value to an integer 1–5. */
+export function clampScale(v: number): number {
+  return Math.min(5, Math.max(1, Math.round(v)))
+}
+
+/** Severity of a (likelihood, consequence) cell, both 1–5. */
+export function riskLevel(likelihood: number, consequence: number): RiskLevel {
+  return RISK_MATRIX[clampScale(likelihood) - 1][clampScale(consequence) - 1]
+}
+
+/** Validate a risk cube from untrusted input: clamp positions to 1–5, drop
+ *  malformed entries and residuals, fill missing ids. Returns undefined when
+ *  there is no cube at all (charts that don't use the risk layout). */
+export function normalizeRisk(input: unknown): RiskCube | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const r = input as Partial<RiskCube>
+  if (!Array.isArray(r.risks)) return undefined
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? clampScale(v) : null
+  const risks: RiskItem[] = []
+  for (const item of r.risks) {
+    if (!item || typeof item !== 'object') continue
+    const L = num((item as RiskItem).likelihood)
+    const C = num((item as RiskItem).consequence)
+    if (L === null || C === null) continue
+    const rawId = (item as RiskItem).id
+    const out: RiskItem = {
+      id: typeof rawId === 'string' && rawId ? rawId : uid('r'),
+      title: typeof (item as RiskItem).title === 'string' ? (item as RiskItem).title : '',
+      likelihood: L,
+      consequence: C,
+    }
+    const code = (item as RiskItem).code
+    if (typeof code === 'string' && code.trim()) out.code = code.trim()
+    const res = (item as RiskItem).residual
+    if (res && typeof res === 'object') {
+      const rl = num(res.likelihood)
+      const rc = num(res.consequence)
+      if (rl !== null && rc !== null) out.residual = { likelihood: rl, consequence: rc }
+    }
+    risks.push(out)
+  }
+  const out: RiskCube = { risks }
+  if (typeof r.xLabel === 'string' && r.xLabel.trim()) out.xLabel = r.xLabel.trim()
+  if (typeof r.yLabel === 'string' && r.yLabel.trim()) out.yLabel = r.yLabel.trim()
+  return out
+}
+
+/* -------------------------------------------------------------- xy chart */
+
+export type XYSeriesKind = 'line' | 'area' | 'bar'
+
+export interface XYPoint {
+  x: number
+  y: number
+}
+
+/** One data series on the 'xy' layout. Color comes from the semantic box
+ *  variants, so charts stay brand-locked. */
+export interface XYSeries {
+  id: string
+  label: string
+  kind: XYSeriesKind
+  /** Semantic color. Defaults rotate primary → secondary → accent → tertiary. */
+  variant?: Exclude<Variant, 'hidden'>
+  points: XYPoint[]
+}
+
+/** Configuration for the 'xy' layout: staffing ramps, risk burndown, ROI,
+ *  benefits curves — any numeric X-Y data. */
+export interface XYChart {
+  series: XYSeries[]
+  xLabel?: string
+  yLabel?: string
+}
+
+const XY_KINDS = ['line', 'area', 'bar']
+const XY_VARIANTS = ['primary', 'secondary', 'tertiary', 'accent']
+
+/** Parse "x, y" pairs, one per line (comma, space or tab separated). Lines
+ *  that don't yield two finite numbers are skipped. */
+export function parsePoints(text: string): XYPoint[] {
+  const out: XYPoint[] = []
+  for (const line of text.split('\n')) {
+    const parts = line.trim().split(/[\s,;]+/).filter(Boolean)
+    if (parts.length < 2) continue
+    const x = Number(parts[0])
+    const y = Number(parts[1])
+    if (Number.isFinite(x) && Number.isFinite(y)) out.push({ x, y })
+  }
+  return out
+}
+
+/** Validate an xy-chart config from untrusted input: coerce series, keep only
+ *  finite points, validate kinds and variants, fill ids. Returns undefined
+ *  when there is no series array at all. */
+export function normalizeXY(input: unknown): XYChart | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const c = input as Partial<XYChart>
+  if (!Array.isArray(c.series)) return undefined
+  const series: XYSeries[] = []
+  for (const s of c.series) {
+    if (!s || typeof s !== 'object') continue
+    const rawId = (s as XYSeries).id
+    const out: XYSeries = {
+      id: typeof rawId === 'string' && rawId ? rawId : uid('s'),
+      label: typeof (s as XYSeries).label === 'string' ? (s as XYSeries).label : '',
+      kind: XY_KINDS.includes((s as XYSeries).kind) ? (s as XYSeries).kind : 'line',
+      points: (Array.isArray((s as XYSeries).points) ? (s as XYSeries).points : [])
+        .filter(
+          (p): p is XYPoint =>
+            !!p &&
+            typeof p === 'object' &&
+            typeof p.x === 'number' &&
+            typeof p.y === 'number' &&
+            Number.isFinite(p.x) &&
+            Number.isFinite(p.y),
+        )
+        .map((p) => ({ x: p.x, y: p.y })),
+    }
+    const variant = (s as XYSeries).variant
+    if (typeof variant === 'string' && XY_VARIANTS.includes(variant)) out.variant = variant
+    series.push(out)
+  }
+  const out: XYChart = { series }
+  if (typeof c.xLabel === 'string' && c.xLabel.trim()) out.xLabel = c.xLabel.trim()
+  if (typeof c.yLabel === 'string' && c.yLabel.trim()) out.yLabel = c.yLabel.trim()
+  return out
 }
 
 /** A labeled vertical marker on the schedule axis (e.g. a 30-day gate). */
@@ -231,6 +414,57 @@ export interface OrgChart {
   schedule?: Schedule
   /** Table definition, used by the 'table' layout. */
   table?: TableDef
+  /** Risk register + axis titles, used by the 'risk' layout. */
+  risk?: RiskCube
+  /** Line / area / bar series, used by the 'xy' layout. */
+  xy?: XYChart
+}
+
+/* ------------------------------------------------- data-element selection */
+
+/**
+ * The app has one selection channel (a string id). Node layouts select boxes
+ * by the node's own id; elements of the data layouts (table cells/columns,
+ * risks, xy series) use these prefixed forms so clicking them on the canvas
+ * can drive the matching side-panel editor.
+ */
+export type DataSelection =
+  | { kind: 'cell'; row: number; col: number }
+  | { kind: 'col'; col: number }
+  | { kind: 'risk'; id: string }
+  | { kind: 'series'; id: string }
+
+export const cellSelId = (row: number, col: number): string => `cell:${row}:${col}`
+export const colSelId = (col: number): string => `col:${col}`
+export const riskSelId = (id: string): string => `risk:${id}`
+export const seriesSelId = (id: string): string => `series:${id}`
+
+/** Parse a selection id into its data-element form, or null when it is not a
+ *  data-element id (e.g. a node id, or nothing selected). */
+export function parseSelection(sel: string | null | undefined): DataSelection | null {
+  if (!sel) return null
+  const parts = sel.split(':')
+  if (parts[0] === 'cell' && parts.length === 3) {
+    const row = Number(parts[1])
+    const col = Number(parts[2])
+    if (Number.isInteger(row) && row >= 0 && Number.isInteger(col) && col >= 0) {
+      return { kind: 'cell', row, col }
+    }
+    return null
+  }
+  if (parts[0] === 'col' && parts.length === 2) {
+    const col = Number(parts[1])
+    return Number.isInteger(col) && col >= 0 ? { kind: 'col', col } : null
+  }
+  if (parts[0] === 'risk' && parts.length >= 2) {
+    const id = parts.slice(1).join(':')
+    return id ? { kind: 'risk', id } : null
+  }
+  if (parts[0] === 'series' && parts.length >= 2) {
+    const id = parts.slice(1).join(':')
+    return id ? { kind: 'series', id } : null
+  }
+  return null
 }
 
 let counter = 0
@@ -571,7 +805,7 @@ export function normalizeChart(input: unknown): OrgChart {
   const dir = c.meta?.direction
   const dirOk = dir === 'TB' || dir === 'BT' || dir === 'LR' || dir === 'RL'
   const layout = c.meta?.layout
-  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline', 'table']
+  const LAYOUTS = ['tree', 'radial', 'layered', 'matrix', 'swimlane', 'timeline', 'table', 'risk', 'xy']
   const layoutOk = typeof layout === 'string' && LAYOUTS.includes(layout)
   const chart: OrgChart = {
     version: CHART_VERSION,
@@ -596,6 +830,10 @@ export function normalizeChart(input: unknown): OrgChart {
   if (schedule) chart.schedule = schedule
   const table = normalizeTable(c.table)
   if (table) chart.table = table
+  const risk = normalizeRisk(c.risk)
+  if (risk) chart.risk = risk
+  const xy = normalizeXY(c.xy)
+  if (xy) chart.xy = xy
   return sanitizeRefs(sanitizePositions(sanitizeColors(chart)))
 }
 
@@ -634,6 +872,101 @@ export function normalizeTable(input: unknown): TableDef | undefined {
   const out: TableDef = { columns, rows }
   if (t.zebra === false) out.zebra = false
   return out
+}
+
+/* ------------------------------------------------- table editing helpers */
+
+/** A small starter grid for a chart that just switched to the table layout. */
+export function emptyTable(): TableDef {
+  return {
+    columns: [
+      { label: 'Item', width: 180, align: 'left' },
+      { label: 'Column B' },
+      { label: 'Column C' },
+    ],
+    rows: [
+      { cells: [{ text: '' }, { text: '' }, { text: '' }] },
+      { cells: [{ text: '' }, { text: '' }, { text: '' }] },
+    ],
+  }
+}
+
+/** Pad a data row's cells to the column count so positional edits (move /
+ *  remove column) stay aligned. Section-header rows keep their single cell. */
+function padRow(row: TableRow, columns: number): TableRow {
+  if (row.header) return row
+  const cells = [...row.cells]
+  while (cells.length < columns) cells.push({ text: '' })
+  return { ...row, cells }
+}
+
+/** Insert a column at `at` (default: append). Data rows gain an empty cell. */
+export function tableAddColumn(t: TableDef, at = t.columns.length): TableDef {
+  const next = clone(t)
+  const i = Math.max(0, Math.min(next.columns.length, at))
+  next.columns.splice(i, 0, { label: `Column ${String.fromCharCode(65 + (next.columns.length % 26))}` })
+  next.rows = next.rows.map((r) => {
+    if (r.header) return r
+    const row = padRow(r, next.columns.length - 1)
+    row.cells.splice(i, 0, { text: '' })
+    return row
+  })
+  return next
+}
+
+/** Remove column `i`. Refused (returned unchanged) for the last column. */
+export function tableRemoveColumn(t: TableDef, i: number): TableDef {
+  if (t.columns.length <= 1 || i < 0 || i >= t.columns.length) return t
+  const next = clone(t)
+  next.columns.splice(i, 1)
+  next.rows = next.rows.map((r) => {
+    if (r.header) return r
+    const row = padRow(r, next.columns.length + 1)
+    row.cells.splice(i, 1)
+    return row
+  })
+  return next
+}
+
+/** Swap column `i` with its neighbor in `dir`, carrying every data cell. */
+export function tableMoveColumn(t: TableDef, i: number, dir: -1 | 1): TableDef {
+  const j = i + dir
+  if (i < 0 || i >= t.columns.length || j < 0 || j >= t.columns.length) return t
+  const next = clone(t)
+  ;[next.columns[i], next.columns[j]] = [next.columns[j], next.columns[i]]
+  next.rows = next.rows.map((r) => {
+    if (r.header) return r
+    const row = padRow(r, next.columns.length)
+    ;[row.cells[i], row.cells[j]] = [row.cells[j], row.cells[i]]
+    return row
+  })
+  return next
+}
+
+/** Insert a row at `at` (default: append) — a data row, or a section header. */
+export function tableAddRow(t: TableDef, at = t.rows.length, header = false): TableDef {
+  const next = clone(t)
+  const i = Math.max(0, Math.min(next.rows.length, at))
+  const row: TableRow = header
+    ? { header: true, cells: [{ text: 'Section' }] }
+    : { cells: next.columns.map(() => ({ text: '' })) }
+  next.rows.splice(i, 0, row)
+  return next
+}
+
+export function tableRemoveRow(t: TableDef, i: number): TableDef {
+  if (i < 0 || i >= t.rows.length) return t
+  const next = clone(t)
+  next.rows.splice(i, 1)
+  return next
+}
+
+export function tableMoveRow(t: TableDef, i: number, dir: -1 | 1): TableDef {
+  const j = i + dir
+  if (i < 0 || i >= t.rows.length || j < 0 || j >= t.rows.length) return t
+  const next = clone(t)
+  ;[next.rows[i], next.rows[j]] = [next.rows[j], next.rows[i]]
+  return next
 }
 
 /** Validate a schedule config from untrusted input. Keeps a known unit, a

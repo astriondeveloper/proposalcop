@@ -47,9 +47,22 @@ Your working chart autosaves to localStorage.
      column, a program-leadership chain, delivery-staff functional leads, and corporate resources.
    - **PMO** — corporate and customer columns with two-way communication-channel arrows
      and a dashed PMO container.
+   - **WBS / Teaming / Transition Schedule** — a numbered work breakdown
+     structure, a prime-and-subs workshare chart, and a 30/60/90-day Gantt
+     timeline with milestones and workstream bands.
+   - **Branded tables** — RACI, QASP/SLA metrics, Section L-to-M crosswalk,
+     past-performance relevance, skills matrix, requirements traceability,
+     comparison, and capability maps — edited visually in the **Table** tab.
+   - **Risk Cube** — a 5×5 likelihood × consequence heatmap with mitigation
+     arrows and a register panel, edited in the **Risks** tab.
+   - **XY charts** — staffing ramp (area), risk burndown (lines), and
+     ROI / benefits (bars + line), edited in the **Data** tab.
 2. **Click any box** (in the chart or the tree) to edit its title, person name,
    style, bullets, detail rows, badges, photo placeholder, and width.
    Add children/siblings, reorder, or delete from the same panel.
+   The first side-panel tab always matches the active layout: **Boxes** for
+   org charts, **Tasks** for the timeline, **Table**, **Risks**, or **Data**
+   for the data layouts.
    Drag the divider between the side panel and the canvas to **resize the panel**
    (double-click it to reset); the width is remembered between sessions.
 3. **Chart tab** — chart title, group zones (tinted or dashed, pick member boxes),

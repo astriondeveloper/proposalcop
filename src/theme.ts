@@ -122,6 +122,15 @@ export const metrics = {
   legendGap: 30,
 } as const
 
+/** Risk-cube cell fills — mid washes of Refraction / Supernova / Twilight, so
+ *  the classic green-amber-red cube stays recognizably on-brand while dark
+ *  markers remain readable on every cell. */
+export const riskFill: Record<'low' | 'moderate' | 'high', string> = {
+  low: '#A5EDC6',
+  moderate: '#FFD794',
+  high: '#FDAFA3',
+}
+
 export type ZoneStyle = 'green' | 'blue' | 'orange' | 'dashed'
 
 export const zoneFill: Record<Exclude<ZoneStyle, 'dashed'>, string> = {

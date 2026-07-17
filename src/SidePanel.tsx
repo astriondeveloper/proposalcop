@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type {
   BadgeType,
+  CellStatus,
   CommLink,
+  DataSelection,
   Direction,
   EdgeArrow,
   EdgeStyle,
@@ -12,8 +14,15 @@ import type {
   OrgNode,
   RefKind,
   Requirement,
+  RiskCube,
+  RiskItem,
   SchedulePhase,
+  TableDef,
   Variant,
+  XYChart,
+  XYPoint,
+  XYSeries,
+  XYSeriesKind,
 } from './model'
 import {
   addChild,
@@ -24,11 +33,21 @@ import {
   clone,
   deleteNode,
   edgeArrow,
+  emptyTable,
   findNode,
   moveNode,
   normalizeChart,
+  parsePoints,
+  parseSelection,
   REF_KINDS,
+  riskLevel,
   setNodePos,
+  tableAddColumn,
+  tableAddRow,
+  tableMoveColumn,
+  tableMoveRow,
+  tableRemoveColumn,
+  tableRemoveRow,
   uid,
   updateNode,
 } from './model'
@@ -97,6 +116,8 @@ const LAYOUT_MODES: { value: LayoutMode; label: string }[] = [
   { value: 'swimlane', label: 'Swimlane (lanes by group)' },
   { value: 'timeline', label: 'Timeline (transition schedule)' },
   { value: 'table', label: 'Table (RACI, crosswalk, QASP…)' },
+  { value: 'risk', label: 'Risk Cube (5×5 heatmap)' },
+  { value: 'xy', label: 'XY Chart (line / area / bar)' },
 ]
 
 const DIRECTIONS: { value: Direction; label: string }[] = [
@@ -196,7 +217,18 @@ function NodeTree({ chart, selectedId, onSelect }: Omit<Props, 'onChange'>) {
 
 function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
   const node = selectedId ? findNode(chart, selectedId) : null
-  if (!node) return <p className="hint">Select a box in the chart or tree to edit it.</p>
+  // On the timeline layout, boxes render as schedule bars: only their title,
+  // color, nesting, and start/duration/milestone show on the chart. Purely
+  // box-visual fields (name, photo, badges, bullets, detail rows, manual
+  // position) are hidden so the editor matches what the chart can draw.
+  const isTimeline = (chart.meta.layout ?? 'tree') === 'timeline'
+  if (!node) {
+    return (
+      <p className="hint">
+        {isTimeline ? 'Select a task in the tree to edit it.' : 'Select a box in the chart or tree to edit it.'}
+      </p>
+    )
+  }
 
   const patch = (p: Partial<OrgNode>) => onChange(updateNode(chart, node.id, p))
   const toggleBadge = (b: BadgeType) => {
@@ -217,9 +249,11 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
       <label>Title
         <input value={node.title} onChange={(e) => patch({ title: e.target.value })} />
       </label>
-      <label>Person name (italic)
-        <input value={node.name ?? ''} onChange={(e) => patch({ name: e.target.value || undefined })} />
-      </label>
+      {!isTimeline && (
+        <label>Person name (italic)
+          <input value={node.name ?? ''} onChange={(e) => patch({ name: e.target.value || undefined })} />
+        </label>
+      )}
       <div className="two-col">
         <label>Style
           <select value={node.variant} onChange={(e) => patch({ variant: e.target.value as Variant })}>
@@ -256,22 +290,24 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
         </p>
       </fieldset>
 
-      <div className="two-col">
-        <label>Width (px, blank = auto)
-          <input
-            type="number"
-            value={node.width ?? ''}
-            placeholder="190"
-            onChange={(e) => patch({ width: e.target.value ? Math.max(80, Number(e.target.value)) : undefined })}
-          />
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={!!node.photo} onChange={(e) => patch({ photo: e.target.checked || undefined })} />
-          Photo placeholder
-        </label>
-      </div>
+      {!isTimeline && (
+        <div className="two-col">
+          <label>Width (px, blank = auto)
+            <input
+              type="number"
+              value={node.width ?? ''}
+              placeholder="190"
+              onChange={(e) => patch({ width: e.target.value ? Math.max(80, Number(e.target.value)) : undefined })}
+            />
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={!!node.photo} onChange={(e) => patch({ photo: e.target.checked || undefined })} />
+            Photo placeholder
+          </label>
+        </div>
+      )}
 
-      {node.pos && (
+      {node.pos && !isTimeline && (
         <div className="btn-row">
           <button className="sm" onClick={() => onChange(setNodePos(chart, node.id, null))}>
             ⤺ Reset to auto position
@@ -280,6 +316,7 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
         </div>
       )}
 
+      {!isTimeline && (
       <fieldset>
         <legend>Badges</legend>
         {BADGES.map((b) => (
@@ -293,7 +330,9 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           </label>
         ))}
       </fieldset>
+      )}
 
+      {!isTimeline && (
       <label>Bullets (one per line)
         <textarea
           rows={4}
@@ -303,7 +342,9 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           }
         />
       </label>
+      )}
 
+      {!isTimeline && (
       <fieldset>
         <legend>Detail rows (PWS / Deliverables / Interface)</legend>
         {(node.details ?? []).map((d, i) => (
@@ -338,9 +379,11 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           + Detail row
         </button>
       </fieldset>
+      )}
 
+      {isTimeline && (
       <fieldset>
-        <legend>Schedule (timeline layout)</legend>
+        <legend>Schedule</legend>
         <div className="two-col">
           <label>Start
             <input
@@ -367,8 +410,9 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           />
           Milestone (diamond marker)
         </label>
-        <p className="hint">Used by the Timeline layout; units match the schedule (days by default).</p>
+        <p className="hint">Units match the schedule settings on the Chart tab (days by default).</p>
       </fieldset>
+      )}
 
       <fieldset>
         <legend>References (compliance)</legend>
@@ -435,11 +479,557 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
   )
 }
 
+/**
+ * React to a canvas selection of a data element: scroll its editor card into
+ * view, flash it, and (optionally) focus its primary input so it can be edited
+ * immediately. Returns the card id currently flashing.
+ */
+function useJumpToSelection(
+  selectedId: string | null | undefined,
+  resolve: (sel: DataSelection) => { cardId: string; inputId?: string } | null,
+): string | null {
+  const [flashId, setFlashId] = useState<string | null>(null)
+  const resolveRef = useRef(resolve)
+  resolveRef.current = resolve
+  useEffect(() => {
+    const sel = parseSelection(selectedId)
+    if (!sel) return
+    const target = resolveRef.current(sel)
+    if (!target) return
+    const el = document.getElementById(target.cardId)
+    if (!el) return
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' })
+    setFlashId(target.cardId)
+    if (target.inputId) {
+      document.getElementById(target.inputId)?.focus({ preventScroll: true })
+    }
+    const t = setTimeout(() => setFlashId(null), 1600)
+    return () => clearTimeout(t)
+  }, [selectedId])
+  return flashId
+}
+
+const CELL_STATUS_OPTIONS: { value: '' | CellStatus; label: string }[] = [
+  { value: '', label: '· none' },
+  { value: 'good', label: '✓ Good (green)' },
+  { value: 'warn', label: '! Warn (amber)' },
+  { value: 'bad', label: '✕ Bad (red)' },
+  { value: 'info', label: 'i Info (blue)' },
+]
+
+const COLUMN_ALIGNS: { value: 'left' | 'center' | 'right'; label: string }[] = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Center' },
+  { value: 'right', label: 'Right' },
+]
+
+/** Visual editor for the 'table' layout (RACI, QASP/SLA, L-to-M crosswalk...):
+ *  columns, rows, per-cell text and status — no JSON required. Clicking a
+ *  cell or column header on the canvas jumps here and focuses its input. */
+function TableEditor({ chart, onChange, selectedId }: Pick<Props, 'chart' | 'onChange' | 'selectedId'>) {
+  const table = chart.table
+  const setTable = (next: TableDef) => onChange({ ...chart, table: next })
+
+  const flashId = useJumpToSelection(selectedId, (sel) => {
+    if (sel.kind === 'col') return { cardId: `tbl-col-${sel.col}`, inputId: `tbl-col-label-${sel.col}` }
+    if (sel.kind === 'cell') return { cardId: `tbl-row-${sel.row}`, inputId: `tbl-cell-${sel.row}-${sel.col}` }
+    return null
+  })
+
+  if (!table) {
+    return (
+      <div className="editor">
+        <p className="hint">This chart uses the table layout but has no table yet.</p>
+        <button onClick={() => setTable(emptyTable())}>Create a starter table</button>
+      </div>
+    )
+  }
+
+  const patchColumn = (ci: number, p: Partial<TableDef['columns'][number]>) => {
+    const next = clone(table)
+    next.columns[ci] = { ...next.columns[ci], ...p }
+    setTable(next)
+  }
+  const patchCell = (ri: number, ci: number, p: { text?: string; status?: CellStatus | undefined }) => {
+    const next = clone(table)
+    const row = next.rows[ri]
+    while (row.cells.length <= ci) row.cells.push({ text: '' })
+    const cell = { ...row.cells[ci], ...p }
+    if (!p.status) delete cell.status
+    row.cells[ci] = cell
+    setTable(next)
+  }
+
+  return (
+    <div className="editor">
+      <fieldset>
+        <legend>Columns ({table.columns.length})</legend>
+        {table.columns.map((c, ci) => (
+          <div key={ci} id={`tbl-col-${ci}`} className={`card${flashId === `tbl-col-${ci}` ? ' flash' : ''}`}>
+            <div className="detail-row">
+              <input
+                id={`tbl-col-label-${ci}`}
+                value={c.label}
+                placeholder={`Column ${ci + 1}`}
+                aria-label={`Column ${ci + 1} label`}
+                onChange={(e) => patchColumn(ci, { label: e.target.value })}
+              />
+              <button className="sm" title="Move column left" disabled={ci === 0} onClick={() => setTable(tableMoveColumn(table, ci, -1))}>←</button>
+              <button className="sm" title="Move column right" disabled={ci === table.columns.length - 1} onClick={() => setTable(tableMoveColumn(table, ci, 1))}>→</button>
+              <button
+                className="danger sm"
+                aria-label={`Remove column ${c.label || ci + 1}`}
+                disabled={table.columns.length <= 1}
+                onClick={() => setTable(tableRemoveColumn(table, ci))}
+              >×</button>
+            </div>
+            <div className="two-col">
+              <label>Width (blank = auto)
+                <input
+                  type="number"
+                  value={c.width ?? ''}
+                  placeholder="auto"
+                  onChange={(e) => patchColumn(ci, { width: e.target.value ? Math.max(40, Number(e.target.value)) : undefined })}
+                />
+              </label>
+              <label>Align
+                <select
+                  value={c.align ?? (ci === 0 ? 'left' : 'center')}
+                  onChange={(e) => patchColumn(ci, { align: e.target.value as 'left' | 'center' | 'right' })}
+                >
+                  {COLUMN_ALIGNS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
+        ))}
+        <button onClick={() => setTable(tableAddColumn(table))}>+ Column</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Rows ({table.rows.length})</legend>
+        {table.rows.map((r, ri) => (
+          <div key={ri} id={`tbl-row-${ri}`} className={`card${flashId === `tbl-row-${ri}` ? ' flash' : ''}`}>
+            <div className="detail-row">
+              <span className="row-tag">{r.header ? 'Section' : `Row ${ri + 1}`}</span>
+              <button className="sm" title="Move row up" disabled={ri === 0} onClick={() => setTable(tableMoveRow(table, ri, -1))}>↑</button>
+              <button className="sm" title="Move row down" disabled={ri === table.rows.length - 1} onClick={() => setTable(tableMoveRow(table, ri, 1))}>↓</button>
+              <button
+                className="danger sm"
+                aria-label={`Remove row ${ri + 1}`}
+                onClick={() => setTable(tableRemoveRow(table, ri))}
+              >×</button>
+            </div>
+            {r.header ? (
+              <input
+                id={`tbl-cell-${ri}-0`}
+                value={r.cells[0]?.text ?? ''}
+                placeholder="Section heading"
+                aria-label={`Section heading for row ${ri + 1}`}
+                onChange={(e) => patchCell(ri, 0, { text: e.target.value })}
+              />
+            ) : (
+              table.columns.map((c, ci) => (
+                <div key={ci} className="detail-row">
+                  <span className="detail-label cell-col" title={c.label}>{c.label || `Col ${ci + 1}`}</span>
+                  <input
+                    id={`tbl-cell-${ri}-${ci}`}
+                    className="detail-text"
+                    value={r.cells[ci]?.text ?? ''}
+                    aria-label={`${c.label || `Column ${ci + 1}`}, row ${ri + 1}`}
+                    onChange={(e) => patchCell(ri, ci, { text: e.target.value })}
+                  />
+                  <select
+                    className="status-pick"
+                    value={r.cells[ci]?.status ?? ''}
+                    aria-label={`Status for ${c.label || `column ${ci + 1}`}, row ${ri + 1}`}
+                    title="Cell status tint"
+                    onChange={(e) => patchCell(ri, ci, { status: (e.target.value || undefined) as CellStatus | undefined })}
+                  >
+                    {CELL_STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+              ))
+            )}
+          </div>
+        ))}
+        <div className="btn-row">
+          <button onClick={() => setTable(tableAddRow(table))}>+ Row</button>
+          <button onClick={() => setTable(tableAddRow(table, table.rows.length, true))}>+ Section row</button>
+        </div>
+      </fieldset>
+
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={table.zebra !== false}
+          onChange={(e) => setTable({ ...clone(table), zebra: e.target.checked ? undefined : false })}
+        />
+        Zebra striping (alternate row shading)
+      </label>
+      <p className="hint">
+        Status tints color a cell green / amber / red / blue — used for RACI roles, QASP ratings,
+        and crosswalk status columns.
+      </p>
+    </div>
+  )
+}
+
+const SCALE_1_TO_5 = [1, 2, 3, 4, 5]
+
+/** A starter register for a chart that just switched to the risk layout. */
+function starterRiskCube(): RiskCube {
+  return {
+    risks: [
+      {
+        id: uid('r'),
+        title: 'New risk',
+        likelihood: 4,
+        consequence: 4,
+        residual: { likelihood: 2, consequence: 3 },
+      },
+    ],
+  }
+}
+
+/** Visual editor for the 'risk' layout: the risk register with likelihood /
+ *  consequence positions and optional post-mitigation (residual) targets.
+ *  Clicking a marker or register row on the canvas jumps to its card here. */
+function RiskEditor({ chart, onChange, selectedId }: Pick<Props, 'chart' | 'onChange' | 'selectedId'>) {
+  const cube = chart.risk
+  const setCube = (next: RiskCube) => onChange({ ...chart, risk: next })
+
+  const flashId = useJumpToSelection(selectedId, (sel) =>
+    sel.kind === 'risk' ? { cardId: `risk-card-${sel.id}` } : null,
+  )
+
+  if (!cube) {
+    return (
+      <div className="editor">
+        <p className="hint">This chart uses the risk-cube layout but has no risks yet.</p>
+        <button onClick={() => setCube(starterRiskCube())}>Create a starter register</button>
+      </div>
+    )
+  }
+
+  const patchRisk = (i: number, p: Partial<RiskItem>) => {
+    const next = clone(cube)
+    next.risks[i] = { ...next.risks[i], ...p }
+    if (p.residual === undefined && 'residual' in p) delete next.risks[i].residual
+    setCube(next)
+  }
+  const moveRisk = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= cube.risks.length) return
+    const next = clone(cube)
+    ;[next.risks[i], next.risks[j]] = [next.risks[j], next.risks[i]]
+    setCube(next)
+  }
+
+  const scaleSelect = (
+    label: string,
+    value: number,
+    onPick: (v: number) => void,
+  ) => (
+    <label>{label}
+      <select value={value} onChange={(e) => onPick(Number(e.target.value))}>
+        {SCALE_1_TO_5.map((v) => <option key={v} value={v}>{v}</option>)}
+      </select>
+    </label>
+  )
+
+  return (
+    <div className="editor">
+      <div className="two-col">
+        <label>X axis label
+          <input
+            value={cube.xLabel ?? ''}
+            placeholder="Consequence"
+            onChange={(e) => setCube({ ...clone(cube), xLabel: e.target.value || undefined })}
+          />
+        </label>
+        <label>Y axis label
+          <input
+            value={cube.yLabel ?? ''}
+            placeholder="Likelihood"
+            onChange={(e) => setCube({ ...clone(cube), yLabel: e.target.value || undefined })}
+          />
+        </label>
+      </div>
+
+      <fieldset>
+        <legend>Risk register ({cube.risks.length})</legend>
+        {cube.risks.length === 0 && <p className="hint">No risks yet — add the first one below.</p>}
+        {cube.risks.map((r, i) => {
+          const level = riskLevel(r.likelihood, r.consequence)
+          const residualLevel = r.residual ? riskLevel(r.residual.likelihood, r.residual.consequence) : null
+          return (
+            <div
+              key={r.id}
+              id={`risk-card-${r.id}`}
+              className={`card${flashId === `risk-card-${r.id}` ? ' flash' : ''}`}
+            >
+              <div className="detail-row">
+                <input
+                  className="risk-code"
+                  value={r.code ?? ''}
+                  placeholder={`R${i + 1}`}
+                  aria-label="Risk code"
+                  title="Marker label on the cube (blank = auto-numbered)"
+                  onChange={(e) => patchRisk(i, { code: e.target.value || undefined })}
+                />
+                <span className={`risk-pill lvl-${level}`}>{level}</span>
+                <button className="sm" title="Move up" disabled={i === 0} onClick={() => moveRisk(i, -1)}>↑</button>
+                <button className="sm" title="Move down" disabled={i === cube.risks.length - 1} onClick={() => moveRisk(i, 1)}>↓</button>
+                <button
+                  className="danger sm"
+                  aria-label={`Remove risk ${r.code || i + 1}`}
+                  onClick={() => setCube({ ...clone(cube), risks: cube.risks.filter((_, j) => j !== i) })}
+                >×</button>
+              </div>
+              <input
+                value={r.title}
+                placeholder="Risk description"
+                aria-label="Risk title"
+                onChange={(e) => patchRisk(i, { title: e.target.value })}
+              />
+              <div className="two-col">
+                {scaleSelect('Likelihood (1–5)', r.likelihood, (v) => patchRisk(i, { likelihood: v }))}
+                {scaleSelect('Consequence (1–5)', r.consequence, (v) => patchRisk(i, { consequence: v }))}
+              </div>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={!!r.residual}
+                  onChange={(e) =>
+                    patchRisk(i, {
+                      residual: e.target.checked
+                        ? { likelihood: Math.max(1, r.likelihood - 2), consequence: Math.max(1, r.consequence - 1) }
+                        : undefined,
+                    })
+                  }
+                />
+                Mitigated (residual) position — draws an arrow
+              </label>
+              {r.residual && (
+                <div className="two-col">
+                  {scaleSelect('Residual likelihood', r.residual.likelihood, (v) =>
+                    patchRisk(i, { residual: { ...r.residual!, likelihood: v } }),
+                  )}
+                  {scaleSelect('Residual consequence', r.residual.consequence, (v) =>
+                    patchRisk(i, { residual: { ...r.residual!, consequence: v } }),
+                  )}
+                </div>
+              )}
+              {residualLevel && (
+                <p className="hint">Mitigation moves this risk from <b>{level}</b> to <b>{residualLevel}</b>.</p>
+              )}
+            </div>
+          )
+        })}
+        <button
+          onClick={() =>
+            setCube({
+              ...clone(cube),
+              risks: [...cube.risks, { id: uid('r'), title: '', likelihood: 3, consequence: 3 }],
+            })
+          }
+        >+ Risk</button>
+      </fieldset>
+      <p className="hint">
+        Cell colors follow the standard 5×5 risk matrix (green / amber / red). Markers are
+        auto-numbered R1, R2… in register order unless a code is set.
+      </p>
+    </div>
+  )
+}
+
+const XY_KIND_OPTIONS: { value: XYSeriesKind; label: string }[] = [
+  { value: 'line', label: 'Line' },
+  { value: 'area', label: 'Area (filled)' },
+  { value: 'bar', label: 'Bars' },
+]
+
+const XY_VARIANT_OPTIONS: { value: Exclude<Variant, 'hidden'>; label: string }[] = [
+  { value: 'primary', label: 'Force (purple)' },
+  { value: 'secondary', label: 'Sky (blue)' },
+  { value: 'tertiary', label: 'Daylight (light blue)' },
+  { value: 'accent', label: 'Supernova (orange)' },
+]
+
+/** A starter chart for a document that just switched to the xy layout. */
+function starterXY(): XYChart {
+  return {
+    xLabel: 'Weeks after award',
+    yLabel: 'Staff on site',
+    series: [
+      {
+        id: uid('s'),
+        label: 'Staffing',
+        kind: 'line',
+        points: [
+          { x: 0, y: 10 },
+          { x: 4, y: 45 },
+          { x: 8, y: 80 },
+          { x: 12, y: 100 },
+        ],
+      },
+    ],
+  }
+}
+
+/** Free-text "x, y per line" field. Keeps its own draft text so partly typed
+ *  lines aren't rewritten mid-keystroke; only parseable lines are committed. */
+function PointsField({ points, onCommit }: { points: XYPoint[]; onCommit: (pts: XYPoint[]) => void }) {
+  const canon = points.map((p) => `${p.x}, ${p.y}`).join('\n')
+  const [text, setText] = useState(canon)
+  const lastCommitted = useRef(canon)
+  // An external change (undo, template load, JSON apply) resets the draft.
+  useEffect(() => {
+    if (canon !== lastCommitted.current) {
+      setText(canon)
+      lastCommitted.current = canon
+    }
+  }, [canon])
+  return (
+    <label>Points (x, y — one per line)
+      <textarea
+        rows={5}
+        value={text}
+        spellCheck={false}
+        placeholder={'0, 10\n4, 45\n8, 80'}
+        onChange={(e) => {
+          setText(e.target.value)
+          const pts = parsePoints(e.target.value)
+          lastCommitted.current = pts.map((p) => `${p.x}, ${p.y}`).join('\n')
+          onCommit(pts)
+        }}
+      />
+    </label>
+  )
+}
+
+/** Visual editor for the 'xy' layout: axis titles plus one card per series
+ *  (label, mark type, brand color, data points). Clicking a series on the
+ *  canvas (line, bars, dots, or legend entry) jumps to its card here. */
+function XYEditor({ chart, onChange, selectedId }: Pick<Props, 'chart' | 'onChange' | 'selectedId'>) {
+  const xy = chart.xy
+  const setXY = (next: XYChart) => onChange({ ...chart, xy: next })
+
+  const flashId = useJumpToSelection(selectedId, (sel) =>
+    sel.kind === 'series' ? { cardId: `xy-card-${sel.id}` } : null,
+  )
+
+  if (!xy) {
+    return (
+      <div className="editor">
+        <p className="hint">This chart uses the XY layout but has no data yet.</p>
+        <button onClick={() => setXY(starterXY())}>Create a starter series</button>
+      </div>
+    )
+  }
+
+  const patchSeries = (i: number, p: Partial<XYSeries>) => {
+    const next = clone(xy)
+    next.series[i] = { ...next.series[i], ...p }
+    setXY(next)
+  }
+  const moveSeries = (i: number, dir: -1 | 1) => {
+    const j = i + dir
+    if (j < 0 || j >= xy.series.length) return
+    const next = clone(xy)
+    ;[next.series[i], next.series[j]] = [next.series[j], next.series[i]]
+    setXY(next)
+  }
+
+  return (
+    <div className="editor">
+      <div className="two-col">
+        <label>X axis label
+          <input
+            value={xy.xLabel ?? ''}
+            placeholder="e.g. Weeks after award"
+            onChange={(e) => setXY({ ...clone(xy), xLabel: e.target.value || undefined })}
+          />
+        </label>
+        <label>Y axis label
+          <input
+            value={xy.yLabel ?? ''}
+            placeholder="e.g. FTEs on site"
+            onChange={(e) => setXY({ ...clone(xy), yLabel: e.target.value || undefined })}
+          />
+        </label>
+      </div>
+
+      <fieldset>
+        <legend>Series ({xy.series.length})</legend>
+        {xy.series.length === 0 && <p className="hint">No series yet — add the first one below.</p>}
+        {xy.series.map((s, i) => (
+          <div key={s.id} id={`xy-card-${s.id}`} className={`card${flashId === `xy-card-${s.id}` ? ' flash' : ''}`}>
+            <div className="detail-row">
+              <input
+                value={s.label}
+                placeholder={`Series ${i + 1}`}
+                aria-label="Series label"
+                onChange={(e) => patchSeries(i, { label: e.target.value })}
+              />
+              <button className="sm" title="Move up (draws earlier)" disabled={i === 0} onClick={() => moveSeries(i, -1)}>↑</button>
+              <button className="sm" title="Move down (draws later)" disabled={i === xy.series.length - 1} onClick={() => moveSeries(i, 1)}>↓</button>
+              <button
+                className="danger sm"
+                aria-label={`Remove series ${s.label || i + 1}`}
+                onClick={() => setXY({ ...clone(xy), series: xy.series.filter((_, j) => j !== i) })}
+              >×</button>
+            </div>
+            <div className="two-col">
+              <label>Mark
+                <select value={s.kind} onChange={(e) => patchSeries(i, { kind: e.target.value as XYSeriesKind })}>
+                  {XY_KIND_OPTIONS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                </select>
+              </label>
+              <label>Color
+                <select
+                  value={s.variant ?? XY_VARIANT_OPTIONS[i % XY_VARIANT_OPTIONS.length].value}
+                  onChange={(e) => patchSeries(i, { variant: e.target.value as Exclude<Variant, 'hidden'> })}
+                >
+                  {XY_VARIANT_OPTIONS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <PointsField points={s.points} onCommit={(points) => patchSeries(i, { points })} />
+          </div>
+        ))}
+        <button
+          onClick={() =>
+            setXY({
+              ...clone(xy),
+              series: [...xy.series, { id: uid('s'), label: '', kind: 'line', points: [] }],
+            })
+          }
+        >+ Series</button>
+      </fieldset>
+      <p className="hint">
+        Lines and areas connect points in the order entered; bars group side-by-side at each x.
+        Use it for staffing ramps, risk burndown, ROI and benefits curves.
+      </p>
+    </div>
+  )
+}
+
 function ChartEditor({ chart, onChange, onSelect }: Props) {
   const nodes = allNodes(chart)
   const options = nodes
     .filter(({ node }) => node.variant !== 'hidden')
     .map(({ node }) => ({ id: node.id, label: node.title || '(untitled)' }))
+
+  // Which chart-level controls make sense depends on the layout: the data
+  // layouts (table / risk / xy) draw no boxes, zones, edges or legend, and the
+  // timeline draws no edges, legend, overlay badges or manual positions — so
+  // controls that could not affect the rendered chart are hidden.
+  const mode = chart.meta.layout ?? 'tree'
+  const isDataMode = mode === 'table' || mode === 'risk' || mode === 'xy'
+  const isNodeGraph = !isDataMode && mode !== 'timeline'
 
   const workshare = workshareRollup(chart)
   const schedulePhases: SchedulePhase[] = chart.schedule?.phases ?? []
@@ -465,26 +1055,30 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
         />
         Show title on chart
       </label>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={!!chart.meta.showComplianceOverlay}
-          onChange={(e) =>
-            onChange({ ...chart, meta: { ...chart.meta, showComplianceOverlay: e.target.checked || undefined } })
-          }
-        />
-        Show compliance on chart (box badges + gaps panel)
-      </label>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={!!chart.meta.showWbsNumbers}
-          onChange={(e) =>
-            onChange({ ...chart, meta: { ...chart.meta, showWbsNumbers: e.target.checked || undefined } })
-          }
-        />
-        Show WBS outline numbers
-      </label>
+      {isNodeGraph && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={!!chart.meta.showComplianceOverlay}
+            onChange={(e) =>
+              onChange({ ...chart, meta: { ...chart.meta, showComplianceOverlay: e.target.checked || undefined } })
+            }
+          />
+          Show compliance on chart (box badges + gaps panel)
+        </label>
+      )}
+      {!isDataMode && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={!!chart.meta.showWbsNumbers}
+            onChange={(e) =>
+              onChange({ ...chart, meta: { ...chart.meta, showWbsNumbers: e.target.checked || undefined } })
+            }
+          />
+          Show WBS outline numbers
+        </label>
+      )}
       <label>Figure caption (shown under the chart, included in exports)
         <textarea
           rows={2}
@@ -512,25 +1106,46 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
       <label>Layout
         <select
           value={chart.meta.layout ?? 'tree'}
-          onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, layout: e.target.value as LayoutMode } })}
+          onChange={(e) => {
+            const layout = e.target.value as LayoutMode
+            const next = { ...chart, meta: { ...chart.meta, layout } }
+            // Seed starter content when switching to a data layout for the
+            // first time, so the canvas (and its editor tab) has something to show.
+            if (layout === 'table' && !chart.table) next.table = emptyTable()
+            if (layout === 'risk' && !chart.risk) next.risk = starterRiskCube()
+            if (layout === 'xy' && !chart.xy) next.xy = starterXY()
+            onChange(next)
+          }}
         >
           {LAYOUT_MODES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
         </select>
       </label>
       {chart.meta.layout === 'table' && (
         <p className="hint">
-          This is a table. Start from a table template, then edit its columns and rows in the JSON tab.
+          This is a table. Edit its columns, rows and cell statuses in the <b>Table</b> tab.
         </p>
       )}
-      <label>Flow direction
-        <select
-          value={chart.meta.direction ?? 'TB'}
-          disabled={(chart.meta.layout ?? 'tree') !== 'tree'}
-          onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, direction: e.target.value as Direction } })}
-        >
-          {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-        </select>
-      </label>
+      {chart.meta.layout === 'risk' && (
+        <p className="hint">
+          This is a 5×5 risk cube. Edit the risk register in the <b>Risks</b> tab.
+        </p>
+      )}
+      {chart.meta.layout === 'xy' && (
+        <p className="hint">
+          This is an XY chart. Edit its series and data points in the <b>Data</b> tab.
+        </p>
+      )}
+      {isNodeGraph && (
+        <label>Flow direction
+          <select
+            value={chart.meta.direction ?? 'TB'}
+            disabled={mode !== 'tree'}
+            onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, direction: e.target.value as Direction } })}
+          >
+            {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
+        </label>
+      )}
       {chart.meta.layout === 'timeline' && (
         <fieldset>
           <legend>Schedule</legend>
@@ -645,12 +1260,18 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
         </fieldset>
       )}
 
-      <button onClick={() => { const r = addRoot(chart); onChange(r.chart); onSelect(r.newId) }}>
-        + Add independent tree / column
-      </button>
+      {!isDataMode && (
+        <button onClick={() => { const r = addRoot(chart); onChange(r.chart); onSelect(r.newId) }}>
+          + Add independent tree / column
+        </button>
+      )}
 
+      {!isDataMode && (
       <fieldset>
-        <legend>Group zones</legend>
+        <legend>{mode === 'timeline' ? 'Workstream bands (groups)' : 'Group zones'}</legend>
+        {mode === 'timeline' && (
+          <p className="hint">Groups render as tinted swimlane bands behind their tasks.</p>
+        )}
         {chart.groups.map((g, gi) => (
           <div key={g.id} className="card">
             <div className="detail-row">
@@ -709,7 +1330,9 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           }
         >+ Group zone</button>
       </fieldset>
+      )}
 
+      {isNodeGraph && (
       <fieldset>
         <legend>Edges (connections)</legend>
         {chart.comms.map((c, ci) => {
@@ -762,7 +1385,9 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           }
         >+ Edge</button>
       </fieldset>
+      )}
 
+      {isNodeGraph && (
       <fieldset>
         <legend>Legend</legend>
         {chart.legend.map((l, li) => (
@@ -810,6 +1435,7 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           >Auto-add from chart</button>
         </div>
       </fieldset>
+      )}
 
       <fieldset>
         <legend>Astrion brand palette (locked)</legend>
@@ -1180,6 +1806,21 @@ export function SidePanel({
 }: Props & { width: number } & LibraryProps) {
   const [tab, setTab] = useState<'build' | 'chart' | 'compliance' | 'library' | 'json'>('build')
 
+  // The first tab edits the chart's content, so it follows the layout mode:
+  // boxes for node layouts, the grid editor for tables, the register for risk
+  // cubes, the series editor for xy charts. Its label matches.
+  const layoutMode = props.chart.meta.layout ?? 'tree'
+  const buildLabel =
+    layoutMode === 'table'
+      ? 'Table'
+      : layoutMode === 'risk'
+        ? 'Risks'
+        : layoutMode === 'xy'
+          ? 'Data'
+          : layoutMode === 'timeline'
+            ? 'Tasks'
+            : 'Boxes'
+
   // Selecting a box anywhere (including clicking it in the chart) jumps the
   // panel to the Boxes tab so its editor and tree row are shown immediately.
   useEffect(() => {
@@ -1195,18 +1836,25 @@ export function SidePanel({
       style={{ width, minWidth: width, maxWidth: width, fontSize: `${fontSize}px` }}
     >
       <div className="tabs" role="group" aria-label="Editor sections">
-        <button aria-pressed={tab === 'build'} className={tab === 'build' ? 'active' : ''} onClick={() => setTab('build')}>Boxes</button>
+        <button aria-pressed={tab === 'build'} className={tab === 'build' ? 'active' : ''} onClick={() => setTab('build')}>{buildLabel}</button>
         <button aria-pressed={tab === 'chart'} className={tab === 'chart' ? 'active' : ''} onClick={() => setTab('chart')}>Chart</button>
         <button aria-pressed={tab === 'compliance'} className={tab === 'compliance' ? 'active' : ''} onClick={() => setTab('compliance')}>Compliance</button>
         <button aria-pressed={tab === 'library'} className={tab === 'library' ? 'active' : ''} onClick={() => setTab('library')}>Library</button>
         <button aria-pressed={tab === 'json'} className={tab === 'json' ? 'active' : ''} onClick={() => setTab('json')}>JSON</button>
       </div>
-      {tab === 'build' && (
-        <>
-          <NodeTree chart={props.chart} selectedId={props.selectedId} onSelect={props.onSelect} />
-          <NodeEditor {...props} />
-        </>
-      )}
+      {tab === 'build' &&
+        (layoutMode === 'table' ? (
+          <TableEditor chart={props.chart} onChange={props.onChange} selectedId={props.selectedId} />
+        ) : layoutMode === 'risk' ? (
+          <RiskEditor chart={props.chart} onChange={props.onChange} selectedId={props.selectedId} />
+        ) : layoutMode === 'xy' ? (
+          <XYEditor chart={props.chart} onChange={props.onChange} selectedId={props.selectedId} />
+        ) : (
+          <>
+            <NodeTree chart={props.chart} selectedId={props.selectedId} onSelect={props.onSelect} />
+            <NodeEditor {...props} />
+          </>
+        ))}
       {tab === 'chart' && <ChartEditor {...props} />}
       {tab === 'compliance' && <ComplianceEditor {...props} />}
       {tab === 'library' && (

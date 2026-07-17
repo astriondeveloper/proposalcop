@@ -3,9 +3,9 @@ import type { JSX, PointerEvent as ReactPointerEvent } from 'react'
 import { textWidth } from './layout'
 import type { ComplianceOverlay, Layout, PlacedNode } from './layout'
 import { REF_KIND_LABEL } from './compliance'
-import { edgeArrow } from './model'
+import { cellSelId, colSelId, edgeArrow, parseSelection, riskSelId, seriesSelId } from './model'
 import type { BadgeType, LegendMarker } from './model'
-import { brand, metrics as M, readableText, variantFill, zoneFill } from './theme'
+import { brand, metrics as M, readableText, riskFill, variantFill, zoneFill } from './theme'
 
 /* Compliance overlay colors (brand Refraction / Twilight), inlined so the
  * exported SVG stays self-contained. */
@@ -461,9 +461,9 @@ function BannerBars({ text, width, height }: { text: string; width: number; heig
 
 /** Transition-schedule (Gantt) renderer. Self-contained SVG: time axis with
  *  quarter-span ticks, dashed phase markers, task bars, and milestone diamonds. */
-function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
+function TimelineSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
   const tl = layout.timeline!
-  const { width, height, title } = layout
+  const { width, height } = layout
   const pad = M.canvasPad
   const plotRight = tl.plotX + tl.plotW
   const plotBottom = tl.bars.length ? tl.bars[tl.bars.length - 1].y + tl.rowH : tl.top + tl.rowH
@@ -538,11 +538,18 @@ function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string
         </g>
       ))}
 
-      {/* Task rows: gutter label + bar or milestone diamond. */}
+      {/* Task rows: gutter label + bar or milestone diamond. Clicking a row
+          selects its task, so the Tasks tab jumps straight to its editor. */}
       {tl.bars.map((b) => {
         const cy = b.y + b.rowH / 2
+        const selected = b.node.id === selectedId
         return (
-          <g key={b.node.id}>
+          <g
+            key={b.node.id}
+            onClick={selectData(onSelect, b.node.id)}
+            style={onSelect ? { cursor: 'pointer' } : undefined}
+          >
+            <rect x={pad - 6} y={b.y} width={plotRight - pad + 12} height={b.rowH} fill="transparent" />
             <text
               x={pad + b.depth * 12}
               y={cy + 4}
@@ -557,20 +564,14 @@ function TimelineSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string
             ) : b.barW > 0 ? (
               <rect x={b.barX} y={b.y + 5} width={b.barW} height={b.rowH - 10} rx={4} fill={b.fill} />
             ) : null}
+            {selected && (
+              <SelectionOutline x={pad - 6} y={b.y} w={plotRight - pad + 12} h={b.rowH} />
+            )}
           </g>
         )
       })}
 
-      {title && (
-        <g>
-          <text x={title.x} y={title.y} fontSize={20} fontWeight={700} fill={brand.heading} fontFamily={brand.fontFamily}>
-            {title.text.toUpperCase()}
-          </text>
-          <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
-        </g>
-      )}
-      {layout.caption && <CaptionText caption={layout.caption} />}
-      {layout.banner && <BannerBars text={layout.banner} width={width} height={height} />}
+      <ChartChrome layout={layout} />
     </svg>
   )
 }
@@ -587,9 +588,10 @@ const TBL_ZEBRA = '#F7F7FB'
 const TBL_SECTION = '#ECE9F5'
 
 /** Branded data-table renderer (RACI, crosswalks, QASP/SLA, comparisons). */
-function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string }) {
+function TableSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
   const t = layout.table!
-  const { width, height, title } = layout
+  const { width, height } = layout
+  const sel = parseSelection(selectedId)
   const padX = 10
   const lineH = 15
   const bodyBottom = t.rows.length ? t.rows[t.rows.length - 1].y + t.rows[t.rows.length - 1].h : t.y + t.headerH
@@ -619,31 +621,42 @@ function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string })
       </defs>
       <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
 
-      {/* Header row. */}
+      {/* Header row. Clicking a column header selects that column's editor. */}
       <rect x={t.x} y={t.y} width={t.totalW} height={t.headerH} fill={header.fill} />
-      {t.columns.map((c, i) =>
-        c.headerLines.map((ln, li) => (
-          <text
-            key={`h-${i}-${li}`}
-            x={textX(c.x, c.w, c.align)}
-            y={lineY(t.y, t.headerH, c.headerLines.length, li)}
-            fontSize={12}
-            fontWeight={700}
-            fill={header.text}
-            textAnchor={anchorFor(c.align)}
-            fontFamily={brand.fontFamily}
-          >
-            {ln}
-          </text>
-        )),
-      )}
+      {t.columns.map((c, i) => (
+        <g
+          key={`h-${i}`}
+          onClick={selectData(onSelect, colSelId(i))}
+          style={onSelect ? { cursor: 'pointer' } : undefined}
+        >
+          <rect x={c.x} y={t.y} width={c.w} height={t.headerH} fill="transparent" />
+          {c.headerLines.map((ln, li) => (
+            <text
+              key={li}
+              x={textX(c.x, c.w, c.align)}
+              y={lineY(t.y, t.headerH, c.headerLines.length, li)}
+              fontSize={12}
+              fontWeight={700}
+              fill={header.text}
+              textAnchor={anchorFor(c.align)}
+              fontFamily={brand.fontFamily}
+            >
+              {ln}
+            </text>
+          ))}
+        </g>
+      ))}
 
-      {/* Body rows. */}
+      {/* Body rows. Clicking a cell selects it in the Table editor. */}
       {t.rows.map((r, ri) => {
         if (r.header) {
           const lines = r.cells[0]?.lines ?? []
           return (
-            <g key={`r-${ri}`}>
+            <g
+              key={`r-${ri}`}
+              onClick={selectData(onSelect, cellSelId(ri, 0))}
+              style={onSelect ? { cursor: 'pointer' } : undefined}
+            >
               <rect x={t.x} y={r.y} width={t.totalW} height={r.h} fill={TBL_SECTION} stroke={TBL_GRID} strokeWidth={0.75} />
               {lines.map((ln, li) => (
                 <text
@@ -671,7 +684,11 @@ function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string })
                   ? TBL_ZEBRA
                   : brand.white
               return (
-                <g key={ci}>
+                <g
+                  key={ci}
+                  onClick={selectData(onSelect, cellSelId(ri, ci))}
+                  style={onSelect ? { cursor: 'pointer' } : undefined}
+                >
                   <rect x={c.x} y={r.y} width={c.w} height={r.h} fill={fill} stroke={TBL_GRID} strokeWidth={0.75} />
                   {(cell?.lines ?? []).map((ln, li) => (
                     <text
@@ -696,6 +713,37 @@ function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string })
       {/* Outer border. */}
       <rect x={t.x} y={t.y} width={t.totalW} height={bodyBottom - t.y} fill="none" stroke="#BDBDBD" strokeWidth={1} />
 
+      {/* Selection outline over the picked column header or cell. */}
+      {sel?.kind === 'col' && t.columns[sel.col] && (
+        <SelectionOutline x={t.columns[sel.col].x} y={t.y} w={t.columns[sel.col].w} h={t.headerH} rx={2} />
+      )}
+      {sel?.kind === 'cell' &&
+        t.rows[sel.row] &&
+        (t.rows[sel.row].header ? (
+          <SelectionOutline x={t.x} y={t.rows[sel.row].y} w={t.totalW} h={t.rows[sel.row].h} rx={2} />
+        ) : (
+          t.columns[sel.col] && (
+            <SelectionOutline
+              x={t.columns[sel.col].x}
+              y={t.rows[sel.row].y}
+              w={t.columns[sel.col].w}
+              h={t.rows[sel.row].h}
+              rx={2}
+            />
+          )
+        ))}
+
+      <ChartChrome layout={layout} />
+    </svg>
+  )
+}
+
+/** Title + accent bar, caption, and classification banners — the shared chrome
+ *  every data-layout renderer (timeline / table / risk / xy) draws on top. */
+function ChartChrome({ layout }: { layout: Layout }) {
+  const { title, caption, banner, width, height } = layout
+  return (
+    <>
       {title && (
         <g>
           <text x={title.x} y={title.y} fontSize={20} fontWeight={700} fill={brand.heading} fontFamily={brand.fontFamily}>
@@ -704,15 +752,461 @@ function TableSvg({ layout, ariaLabel }: { layout: Layout; ariaLabel?: string })
           <rect x={title.x} y={title.y + 8} width={title.w} height={4} fill="url(#skyGradient)" />
         </g>
       )}
-      {layout.caption && <CaptionText caption={layout.caption} />}
-      {layout.banner && <BannerBars text={layout.banner} width={width} height={height} />}
+      {caption && <CaptionText caption={caption} />}
+      {banner && <BannerBars text={banner} width={width} height={height} />}
+    </>
+  )
+}
+
+/** Props shared by the data-layout renderers: clicking an element selects it
+ *  (a prefixed data-selection id) so the side panel can jump to its editor. */
+interface DataSvgProps {
+  layout: Layout
+  ariaLabel?: string
+  selectedId?: string | null
+  onSelect?: (id: string) => void
+}
+
+/** Click handler that selects a data element without clearing via the canvas. */
+function selectData(onSelect: ((id: string) => void) | undefined, id: string) {
+  return onSelect
+    ? (e: { stopPropagation: () => void }) => {
+        e.stopPropagation()
+        onSelect(id)
+      }
+    : undefined
+}
+
+/** Dashed selection outline used by every data layout (same look as boxes). */
+function SelectionOutline({ x, y, w, h, rx = 4 }: { x: number; y: number; w: number; h: number; rx?: number }) {
+  return (
+    <rect
+      data-ui="selection"
+      x={x}
+      y={y}
+      width={w}
+      height={h}
+      rx={rx}
+      fill="none"
+      stroke={brand.marker}
+      strokeWidth={2}
+      strokeDasharray="5 3"
+      style={{ pointerEvents: 'none' }}
+    />
+  )
+}
+
+/* Risk-marker ink: current markers are Force purple with white text; residual
+ * markers are open (white) circles with a Force outline. */
+const RISK_MARKER = brand.comm
+const RISK_GRID_GAP = 2.5
+
+/** 5×5 risk-cube renderer: tinted matrix cells, axis scales + titles, current
+ *  and residual markers with mitigation arrows, and the register panel. */
+function RiskSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
+  const rc = layout.risk!
+  const { width, height } = layout
+  const cs = rc.cellSize
+  const R = 11 // marker radius
+  const sel = parseSelection(selectedId)
+  const selectedRiskId = sel?.kind === 'risk' ? sel.id : null
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fontFamily={brand.fontFamily}
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <defs>
+        <linearGradient id="skyGradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={brand.skyGradient[0]} />
+          <stop offset="50%" stopColor={brand.skyGradient[1]} />
+          <stop offset="100%" stopColor={brand.skyGradient[2]} />
+        </linearGradient>
+        <marker id="riskArrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+          <path d="M 0 0 L 7 4 L 0 8 Z" fill={RISK_MARKER} />
+        </marker>
+      </defs>
+      <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+
+      {/* Matrix cells (small white gaps read as the grid). */}
+      {rc.cells.map((c) => (
+        <rect
+          key={`${c.row}-${c.col}`}
+          x={c.x + RISK_GRID_GAP / 2}
+          y={c.y + RISK_GRID_GAP / 2}
+          width={cs - RISK_GRID_GAP}
+          height={cs - RISK_GRID_GAP}
+          rx={3}
+          fill={riskFill[c.level]}
+        />
+      ))}
+
+      {/* Axis scales: consequence 1–5 along the bottom, likelihood 1–5 up the left. */}
+      {[1, 2, 3, 4, 5].map((v) => (
+        <g key={`ax-${v}`} fontSize={11} fill={brand.detailText}>
+          <text x={rc.x + (v - 0.5) * cs} y={rc.y + rc.plotH + 16} textAnchor="middle">
+            {v}
+          </text>
+          <text x={rc.x - 10} y={rc.y + (5 - v + 0.5) * cs + 4} textAnchor="end">
+            {v}
+          </text>
+        </g>
+      ))}
+      <text
+        x={rc.x + rc.plotW / 2}
+        y={rc.y + rc.plotH + 36}
+        textAnchor="middle"
+        fontSize={11.5}
+        fontWeight={700}
+        letterSpacing="0.5"
+        fill={brand.heading}
+      >
+        {rc.xLabel.toUpperCase()} →
+      </text>
+      <text
+        x={rc.x - 30}
+        y={rc.y + rc.plotH / 2}
+        textAnchor="middle"
+        fontSize={11.5}
+        fontWeight={700}
+        letterSpacing="0.5"
+        fill={brand.heading}
+        transform={`rotate(-90 ${rc.x - 30} ${rc.y + rc.plotH / 2})`}
+      >
+        {rc.yLabel.toUpperCase()} →
+      </text>
+
+      {/* Mitigation arrows first, so markers draw over their ends. */}
+      {rc.markers.map(
+        (m) =>
+          m.residual && (
+            <line
+              key={`arrow-${m.id}`}
+              x1={m.cx}
+              y1={m.cy}
+              x2={m.residual.cx}
+              y2={m.residual.cy}
+              stroke={RISK_MARKER}
+              strokeWidth={1.8}
+              strokeDasharray="5 4"
+              markerEnd="url(#riskArrow)"
+            />
+          ),
+      )}
+
+      {/* Residual (post-mitigation) markers: open circles. Clicking one
+          selects its risk, same as the current marker. */}
+      {rc.markers.map(
+        (m) =>
+          m.residual && (
+            <g
+              key={`res-${m.id}`}
+              onClick={selectData(onSelect, riskSelId(m.id))}
+              style={onSelect ? { cursor: 'pointer' } : undefined}
+            >
+              <title>{`${m.code} residual: ${m.title}`}</title>
+              {m.id === selectedRiskId && (
+                <circle
+                  cx={m.residual.cx}
+                  cy={m.residual.cy}
+                  r={R + 2.5}
+                  fill="none"
+                  stroke={brand.marker}
+                  strokeWidth={2}
+                  strokeDasharray="4 3"
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
+              <circle cx={m.residual.cx} cy={m.residual.cy} r={R - 1.5} fill={brand.white} stroke={RISK_MARKER} strokeWidth={1.8} />
+              <text
+                x={m.residual.cx}
+                y={m.residual.cy + 3.5}
+                textAnchor="middle"
+                fontSize={9.5}
+                fontWeight={700}
+                fill={RISK_MARKER}
+              >
+                {m.code}
+              </text>
+            </g>
+          ),
+      )}
+
+      {/* Current markers. Clicking one selects the risk in the register. */}
+      {rc.markers.map((m) => (
+        <g
+          key={`cur-${m.id}`}
+          onClick={selectData(onSelect, riskSelId(m.id))}
+          style={onSelect ? { cursor: 'pointer' } : undefined}
+        >
+          <title>{`${m.code}: ${m.title}`}</title>
+          {m.id === selectedRiskId && (
+            <circle
+              cx={m.cx}
+              cy={m.cy}
+              r={R + 4}
+              fill="none"
+              stroke={brand.marker}
+              strokeWidth={2}
+              strokeDasharray="4 3"
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
+          <circle cx={m.cx} cy={m.cy} r={R} fill={RISK_MARKER} stroke={brand.white} strokeWidth={1.5} />
+          <text x={m.cx} y={m.cy + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={700} fill={brand.white}>
+            {m.code}
+          </text>
+        </g>
+      ))}
+
+      {/* Register panel. */}
+      {rc.panel && (
+        <g>
+          <rect x={rc.panel.x} y={rc.panel.y} width={rc.panel.w} height={rc.panel.h} rx={4} fill={brand.white} stroke="#BDBDBD" strokeWidth={1} />
+          <text x={rc.panel.x + 12} y={rc.panel.y + 20} fontSize={12} fontWeight={700} fill={brand.heading}>
+            Risk Register
+          </text>
+          {rc.panel.rows.map((row, i) => {
+            const moveW = textWidth(row.move, 10.5)
+            const titleMax = rc.panel!.w - 24 - 14 - textWidth(`${row.code}  `, 11, true) - moveW - 10
+            return (
+              <g
+                key={`${row.code}-${i}`}
+                onClick={selectData(onSelect, riskSelId(row.id))}
+                style={onSelect ? { cursor: 'pointer' } : undefined}
+              >
+                <rect x={rc.panel!.x + 4} y={row.y - 14} width={rc.panel!.w - 8} height={20} rx={3} fill="transparent" />
+                {row.id === selectedRiskId && (
+                  <SelectionOutline x={rc.panel!.x + 4} y={row.y - 14} w={rc.panel!.w - 8} h={20} rx={3} />
+                )}
+                <circle cx={rc.panel!.x + 17} cy={row.y - 3.5} r={4.5} fill={riskFill[row.level]} stroke="#BDBDBD" strokeWidth={0.5} />
+                <text x={rc.panel!.x + 27} y={row.y} fontSize={11} fill={brand.detailText}>
+                  <tspan fontWeight={700}>{row.code}</tspan>
+                  {`  ${truncate(row.title, 11, Math.max(30, titleMax))}`}
+                </text>
+                <text x={rc.panel!.x + rc.panel!.w - 12} y={row.y} textAnchor="end" fontSize={10.5} fill="#8b86a0">
+                  {row.move}
+                </text>
+              </g>
+            )
+          })}
+        </g>
+      )}
+
+      <ChartChrome layout={layout} />
+    </svg>
+  )
+}
+
+const XY_GRID = '#E7E7EE'
+const XY_AREA_OPACITY = 0.24
+
+/** Legend swatch for an xy series, shaped by its kind. */
+function XYLegendSwatch({ kind, fill, x, y }: { kind: string; fill: string; x: number; y: number }) {
+  if (kind === 'bar') return <rect x={x} y={y - 9} width={10} height={11} rx={1.5} fill={fill} />
+  if (kind === 'area')
+    return (
+      <g>
+        <rect x={x} y={y - 8} width={14} height={9} fill={fill} opacity={XY_AREA_OPACITY} />
+        <line x1={x} y1={y - 8} x2={x + 14} y2={y - 8} stroke={fill} strokeWidth={2.2} />
+      </g>
+    )
+  return <line x1={x} y1={y - 4} x2={x + 14} y2={y - 4} stroke={fill} strokeWidth={2.6} strokeLinecap="round" />
+}
+
+/** X-Y chart renderer: gridlines, axes, then area → bar → line → dot passes so
+ *  overlapping series stay readable. */
+function XYSvg({ layout, ariaLabel, selectedId, onSelect }: DataSvgProps) {
+  const xc = layout.xy!
+  const { width, height } = layout
+  const plotBottom = xc.y + xc.plotH
+  const sel = parseSelection(selectedId)
+  const selectedSeriesId = sel?.kind === 'series' ? sel.id : null
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      fontFamily={brand.fontFamily}
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <defs>
+        <linearGradient id="skyGradient" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={brand.skyGradient[0]} />
+          <stop offset="50%" stopColor={brand.skyGradient[1]} />
+          <stop offset="100%" stopColor={brand.skyGradient[2]} />
+        </linearGradient>
+      </defs>
+      <rect x={0} y={0} width={width} height={height} fill={brand.canvasBg} />
+
+      {/* Horizontal gridlines + y tick labels. */}
+      {xc.yTicks.map((t, i) => (
+        <g key={`gy-${i}`}>
+          <line x1={xc.x} y1={t.y} x2={xc.x + xc.plotW} y2={t.y} stroke={XY_GRID} strokeWidth={1} />
+          <text x={xc.x - 8} y={t.y + 3.5} textAnchor="end" fontSize={10.5} fill={brand.detailText}>
+            {t.label}
+          </text>
+        </g>
+      ))}
+
+      {/* X tick marks + labels. */}
+      {xc.xTicks.map((t, i) => (
+        <g key={`gx-${i}`}>
+          <line x1={t.x} y1={plotBottom} x2={t.x} y2={plotBottom + 4} stroke={brand.line} strokeWidth={1.2} />
+          <text x={t.x} y={plotBottom + 16} textAnchor="middle" fontSize={10.5} fill={brand.detailText}>
+            {t.label}
+          </text>
+        </g>
+      ))}
+
+      {/* Axis frame: left edge + zero baseline. */}
+      <line x1={xc.x} y1={xc.y} x2={xc.x} y2={plotBottom} stroke={brand.line} strokeWidth={1.5} />
+      <line x1={xc.x} y1={plotBottom} x2={xc.x + xc.plotW} y2={plotBottom} stroke={brand.line} strokeWidth={1.5} />
+      {xc.zeroY < plotBottom - 0.5 && (
+        <line x1={xc.x} y1={xc.zeroY} x2={xc.x + xc.plotW} y2={xc.zeroY} stroke={brand.heading} strokeWidth={1} />
+      )}
+
+      {/* Areas first (translucent), then bars, lines, and marker dots.
+          Clicking any mark selects its series in the Data editor. */}
+      {xc.series.map(
+        (s) =>
+          s.areaPath && (
+            <path
+              key={`a-${s.id}`}
+              d={s.areaPath}
+              fill={s.fill}
+              opacity={XY_AREA_OPACITY}
+              onClick={selectData(onSelect, seriesSelId(s.id))}
+              style={onSelect ? { cursor: 'pointer' } : undefined}
+            />
+          ),
+      )}
+      {xc.series.map((s) =>
+        s.bars ? (
+          <g
+            key={`b-${s.id}`}
+            onClick={selectData(onSelect, seriesSelId(s.id))}
+            style={onSelect ? { cursor: 'pointer' } : undefined}
+          >
+            {s.bars.map((b, i) => (
+              <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} rx={2} fill={s.fill}>
+                <title>{s.label}</title>
+              </rect>
+            ))}
+            {s.id === selectedSeriesId &&
+              s.bars.map((b, i) => (
+                <SelectionOutline key={`sel-${i}`} x={b.x - 2} y={b.y - 2} w={b.w + 4} h={b.h + 4} rx={3} />
+              ))}
+          </g>
+        ) : null,
+      )}
+      {xc.series.map(
+        (s) =>
+          s.linePath && (
+            <g
+              key={`l-${s.id}`}
+              onClick={selectData(onSelect, seriesSelId(s.id))}
+              style={onSelect ? { cursor: 'pointer' } : undefined}
+            >
+              {s.id === selectedSeriesId && (
+                <path d={s.linePath} fill="none" stroke={s.fill} strokeWidth={9} opacity={0.22} strokeLinejoin="round" strokeLinecap="round" />
+              )}
+              {/* Wide invisible stroke so thin lines are easy to click. */}
+              <path d={s.linePath} fill="none" stroke="transparent" strokeWidth={12} />
+              <path
+                d={s.linePath}
+                fill="none"
+                stroke={s.fill}
+                strokeWidth={2.5}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            </g>
+          ),
+      )}
+      {xc.series.map((s) =>
+        s.kind === 'bar' ? null : (
+          <g
+            key={`d-${s.id}`}
+            onClick={selectData(onSelect, seriesSelId(s.id))}
+            style={onSelect ? { cursor: 'pointer' } : undefined}
+          >
+            {s.dots.map((d, i) => (
+              <circle key={i} cx={d.x} cy={d.y} r={3} fill={s.fill} stroke={brand.white} strokeWidth={1.2}>
+                <title>{s.label}</title>
+              </circle>
+            ))}
+          </g>
+        ),
+      )}
+
+      {/* Series legend (above the plot); clicking an entry selects its series. */}
+      {xc.legend.map((item, i) => {
+        const w = 20 + textWidth(item.label, 11)
+        return (
+          <g
+            key={`leg-${i}`}
+            onClick={selectData(onSelect, seriesSelId(item.id))}
+            style={onSelect ? { cursor: 'pointer' } : undefined}
+          >
+            <rect x={item.x - 4} y={item.y - 13} width={w + 8} height={18} rx={3} fill="transparent" />
+            {item.id === selectedSeriesId && (
+              <SelectionOutline x={item.x - 4} y={item.y - 13} w={w + 8} h={18} rx={3} />
+            )}
+            <XYLegendSwatch kind={item.kind} fill={item.fill} x={item.x} y={item.y} />
+            <text x={item.x + 20} y={item.y} fontSize={11} fill={brand.detailText}>
+              {item.label}
+            </text>
+          </g>
+        )
+      })}
+
+      {/* Axis titles. */}
+      {xc.xLabel && (
+        <text
+          x={xc.x + xc.plotW / 2}
+          y={plotBottom + 36}
+          textAnchor="middle"
+          fontSize={11.5}
+          fontWeight={700}
+          letterSpacing="0.5"
+          fill={brand.heading}
+        >
+          {xc.xLabel.toUpperCase()}
+        </text>
+      )}
+      {xc.yLabel && (
+        <text
+          x={M.canvasPad + 10}
+          y={xc.y + xc.plotH / 2}
+          textAnchor="middle"
+          fontSize={11.5}
+          fontWeight={700}
+          letterSpacing="0.5"
+          fill={brand.heading}
+          transform={`rotate(-90 ${M.canvasPad + 10} ${xc.y + xc.plotH / 2})`}
+        >
+          {xc.yLabel.toUpperCase()}
+        </text>
+      )}
+
+      <ChartChrome layout={layout} />
     </svg>
   )
 }
 
 export function ChartSvg({ layout, selectedId, onSelect, onNodePointerDown, ariaLabel }: Props) {
-  if (layout.timeline) return <TimelineSvg layout={layout} ariaLabel={ariaLabel} />
-  if (layout.table) return <TableSvg layout={layout} ariaLabel={ariaLabel} />
+  const dataProps = { layout, ariaLabel, selectedId, onSelect }
+  if (layout.timeline) return <TimelineSvg {...dataProps} />
+  if (layout.table) return <TableSvg {...dataProps} />
+  if (layout.risk) return <RiskSvg {...dataProps} />
+  if (layout.xy) return <XYSvg {...dataProps} />
   const { placed, connectors, zones, comms, legend, title, compliance, caption, banner, width, height } = layout
   const orphanSet = compliance ? new Set(compliance.orphanNodeIds) : null
   const statusFor = (p: PlacedNode): 'ok' | 'orphan' | null => {

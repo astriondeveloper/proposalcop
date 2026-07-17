@@ -807,6 +807,61 @@ body,
   gap: 6px;
 }
 
+/* Table editor: row badges + compact per-cell controls. */
+.row-tag {
+  flex: 1;
+  font-size: 0.78em;
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.detail-row .cell-col {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82em;
+  color: var(--muted);
+}
+
+.detail-row .status-pick {
+  width: 86px;
+  flex-shrink: 0;
+}
+
+/* Risk editor: compact code input + computed severity pill. */
+.detail-row .risk-code {
+  width: 64px;
+  flex-shrink: 0;
+}
+
+.risk-pill {
+  flex: 1;
+  font-size: 0.74em;
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-align: center;
+}
+
+.risk-pill.lvl-low {
+  background: #a5edc6;
+  color: #14532d;
+}
+
+.risk-pill.lvl-moderate {
+  background: #ffd794;
+  color: #713f12;
+}
+
+.risk-pill.lvl-high {
+  background: #fdafa3;
+  color: #7f1d1d;
+}
+
 .member-list {
   max-height: 150px;
   overflow-y: auto;
@@ -1062,8 +1117,10 @@ body,
   background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
-/* Transient highlight when a requirement row is jumped to. */
-.req.flash {
+/* Transient highlight when a requirement row or an editor card is jumped to
+   (e.g. after clicking a table cell, risk marker, or series on the canvas). */
+.req.flash,
+.card.flash {
   animation: req-flash 1.6s var(--ease);
 }
 
