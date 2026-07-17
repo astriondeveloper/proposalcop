@@ -627,6 +627,16 @@ export default function App() {
 
   const canvasCursor = panning ? 'grabbing' : spaceHeld ? 'grab' : ''
 
+  // Screen-reader summary matching the active layout, not just org charts.
+  const chartAriaLabel = (() => {
+    const name = chart.meta.title || 'Chart'
+    if (view.table) return `${name} table, ${view.table.rows.length} rows by ${view.table.columns.length} columns`
+    if (view.timeline) return `${name} schedule, ${view.timeline.bars.length} tasks`
+    if (view.risk) return `${name} risk cube, ${view.risk.markers.length} risks`
+    if (view.xy) return `${name} chart, ${view.xy.series.length} data series`
+    return `${name} org chart, ${view.placed.length} ${view.placed.length === 1 ? 'box' : 'boxes'}`
+  })()
+
   return (
     <div className="app">
       <header className="toolbar">
@@ -821,7 +831,7 @@ export default function App() {
                   selectedId={selectedId}
                   onSelect={selectNode}
                   onNodePointerDown={onNodePointerDown}
-                  ariaLabel={`${chart.meta.title || 'Organization'} org chart, ${view.placed.length} ${view.placed.length === 1 ? 'box' : 'boxes'}`}
+                  ariaLabel={chartAriaLabel}
                 />
               </div>
             )}

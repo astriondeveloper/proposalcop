@@ -215,7 +215,18 @@ function NodeTree({ chart, selectedId, onSelect }: Omit<Props, 'onChange'>) {
 
 function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
   const node = selectedId ? findNode(chart, selectedId) : null
-  if (!node) return <p className="hint">Select a box in the chart or tree to edit it.</p>
+  // On the timeline layout, boxes render as schedule bars: only their title,
+  // color, nesting, and start/duration/milestone show on the chart. Purely
+  // box-visual fields (name, photo, badges, bullets, detail rows, manual
+  // position) are hidden so the editor matches what the chart can draw.
+  const isTimeline = (chart.meta.layout ?? 'tree') === 'timeline'
+  if (!node) {
+    return (
+      <p className="hint">
+        {isTimeline ? 'Select a task in the tree to edit it.' : 'Select a box in the chart or tree to edit it.'}
+      </p>
+    )
+  }
 
   const patch = (p: Partial<OrgNode>) => onChange(updateNode(chart, node.id, p))
   const toggleBadge = (b: BadgeType) => {
@@ -236,9 +247,11 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
       <label>Title
         <input value={node.title} onChange={(e) => patch({ title: e.target.value })} />
       </label>
-      <label>Person name (italic)
-        <input value={node.name ?? ''} onChange={(e) => patch({ name: e.target.value || undefined })} />
-      </label>
+      {!isTimeline && (
+        <label>Person name (italic)
+          <input value={node.name ?? ''} onChange={(e) => patch({ name: e.target.value || undefined })} />
+        </label>
+      )}
       <div className="two-col">
         <label>Style
           <select value={node.variant} onChange={(e) => patch({ variant: e.target.value as Variant })}>
@@ -275,22 +288,24 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
         </p>
       </fieldset>
 
-      <div className="two-col">
-        <label>Width (px, blank = auto)
-          <input
-            type="number"
-            value={node.width ?? ''}
-            placeholder="190"
-            onChange={(e) => patch({ width: e.target.value ? Math.max(80, Number(e.target.value)) : undefined })}
-          />
-        </label>
-        <label className="check">
-          <input type="checkbox" checked={!!node.photo} onChange={(e) => patch({ photo: e.target.checked || undefined })} />
-          Photo placeholder
-        </label>
-      </div>
+      {!isTimeline && (
+        <div className="two-col">
+          <label>Width (px, blank = auto)
+            <input
+              type="number"
+              value={node.width ?? ''}
+              placeholder="190"
+              onChange={(e) => patch({ width: e.target.value ? Math.max(80, Number(e.target.value)) : undefined })}
+            />
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={!!node.photo} onChange={(e) => patch({ photo: e.target.checked || undefined })} />
+            Photo placeholder
+          </label>
+        </div>
+      )}
 
-      {node.pos && (
+      {node.pos && !isTimeline && (
         <div className="btn-row">
           <button className="sm" onClick={() => onChange(setNodePos(chart, node.id, null))}>
             ⤺ Reset to auto position
@@ -299,6 +314,7 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
         </div>
       )}
 
+      {!isTimeline && (
       <fieldset>
         <legend>Badges</legend>
         {BADGES.map((b) => (
@@ -312,7 +328,9 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           </label>
         ))}
       </fieldset>
+      )}
 
+      {!isTimeline && (
       <label>Bullets (one per line)
         <textarea
           rows={4}
@@ -322,7 +340,9 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           }
         />
       </label>
+      )}
 
+      {!isTimeline && (
       <fieldset>
         <legend>Detail rows (PWS / Deliverables / Interface)</legend>
         {(node.details ?? []).map((d, i) => (
@@ -357,9 +377,11 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           + Detail row
         </button>
       </fieldset>
+      )}
 
+      {isTimeline && (
       <fieldset>
-        <legend>Schedule (timeline layout)</legend>
+        <legend>Schedule</legend>
         <div className="two-col">
           <label>Start
             <input
@@ -386,8 +408,9 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
           />
           Milestone (diamond marker)
         </label>
-        <p className="hint">Used by the Timeline layout; units match the schedule (days by default).</p>
+        <p className="hint">Units match the schedule settings on the Chart tab (days by default).</p>
       </fieldset>
+      )}
 
       <fieldset>
         <legend>References (compliance)</legend>
@@ -943,6 +966,14 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
     .filter(({ node }) => node.variant !== 'hidden')
     .map(({ node }) => ({ id: node.id, label: node.title || '(untitled)' }))
 
+  // Which chart-level controls make sense depends on the layout: the data
+  // layouts (table / risk / xy) draw no boxes, zones, edges or legend, and the
+  // timeline draws no edges, legend, overlay badges or manual positions — so
+  // controls that could not affect the rendered chart are hidden.
+  const mode = chart.meta.layout ?? 'tree'
+  const isDataMode = mode === 'table' || mode === 'risk' || mode === 'xy'
+  const isNodeGraph = !isDataMode && mode !== 'timeline'
+
   const workshare = workshareRollup(chart)
   const schedulePhases: SchedulePhase[] = chart.schedule?.phases ?? []
   const setSchedulePhases = (next: SchedulePhase[]) =>
@@ -967,26 +998,30 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
         />
         Show title on chart
       </label>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={!!chart.meta.showComplianceOverlay}
-          onChange={(e) =>
-            onChange({ ...chart, meta: { ...chart.meta, showComplianceOverlay: e.target.checked || undefined } })
-          }
-        />
-        Show compliance on chart (box badges + gaps panel)
-      </label>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={!!chart.meta.showWbsNumbers}
-          onChange={(e) =>
-            onChange({ ...chart, meta: { ...chart.meta, showWbsNumbers: e.target.checked || undefined } })
-          }
-        />
-        Show WBS outline numbers
-      </label>
+      {isNodeGraph && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={!!chart.meta.showComplianceOverlay}
+            onChange={(e) =>
+              onChange({ ...chart, meta: { ...chart.meta, showComplianceOverlay: e.target.checked || undefined } })
+            }
+          />
+          Show compliance on chart (box badges + gaps panel)
+        </label>
+      )}
+      {!isDataMode && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={!!chart.meta.showWbsNumbers}
+            onChange={(e) =>
+              onChange({ ...chart, meta: { ...chart.meta, showWbsNumbers: e.target.checked || undefined } })
+            }
+          />
+          Show WBS outline numbers
+        </label>
+      )}
       <label>Figure caption (shown under the chart, included in exports)
         <textarea
           rows={2}
@@ -1043,15 +1078,17 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           This is an XY chart. Edit its series and data points in the <b>Data</b> tab.
         </p>
       )}
-      <label>Flow direction
-        <select
-          value={chart.meta.direction ?? 'TB'}
-          disabled={(chart.meta.layout ?? 'tree') !== 'tree'}
-          onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, direction: e.target.value as Direction } })}
-        >
-          {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-        </select>
-      </label>
+      {isNodeGraph && (
+        <label>Flow direction
+          <select
+            value={chart.meta.direction ?? 'TB'}
+            disabled={mode !== 'tree'}
+            onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, direction: e.target.value as Direction } })}
+          >
+            {DIRECTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
+        </label>
+      )}
       {chart.meta.layout === 'timeline' && (
         <fieldset>
           <legend>Schedule</legend>
@@ -1166,12 +1203,18 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
         </fieldset>
       )}
 
-      <button onClick={() => { const r = addRoot(chart); onChange(r.chart); onSelect(r.newId) }}>
-        + Add independent tree / column
-      </button>
+      {!isDataMode && (
+        <button onClick={() => { const r = addRoot(chart); onChange(r.chart); onSelect(r.newId) }}>
+          + Add independent tree / column
+        </button>
+      )}
 
+      {!isDataMode && (
       <fieldset>
-        <legend>Group zones</legend>
+        <legend>{mode === 'timeline' ? 'Workstream bands (groups)' : 'Group zones'}</legend>
+        {mode === 'timeline' && (
+          <p className="hint">Groups render as tinted swimlane bands behind their tasks.</p>
+        )}
         {chart.groups.map((g, gi) => (
           <div key={g.id} className="card">
             <div className="detail-row">
@@ -1230,7 +1273,9 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           }
         >+ Group zone</button>
       </fieldset>
+      )}
 
+      {isNodeGraph && (
       <fieldset>
         <legend>Edges (connections)</legend>
         {chart.comms.map((c, ci) => {
@@ -1283,7 +1328,9 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           }
         >+ Edge</button>
       </fieldset>
+      )}
 
+      {isNodeGraph && (
       <fieldset>
         <legend>Legend</legend>
         {chart.legend.map((l, li) => (
@@ -1331,6 +1378,7 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           >Auto-add from chart</button>
         </div>
       </fieldset>
+      )}
 
       <fieldset>
         <legend>Astrion brand palette (locked)</legend>
@@ -1706,7 +1754,15 @@ export function SidePanel({
   // cubes, the series editor for xy charts. Its label matches.
   const layoutMode = props.chart.meta.layout ?? 'tree'
   const buildLabel =
-    layoutMode === 'table' ? 'Table' : layoutMode === 'risk' ? 'Risks' : layoutMode === 'xy' ? 'Data' : 'Boxes'
+    layoutMode === 'table'
+      ? 'Table'
+      : layoutMode === 'risk'
+        ? 'Risks'
+        : layoutMode === 'xy'
+          ? 'Data'
+          : layoutMode === 'timeline'
+            ? 'Tasks'
+            : 'Boxes'
 
   // Selecting a box anywhere (including clicking it in the chart) jumps the
   // panel to the Boxes tab so its editor and tree row are shown immediately.
