@@ -1213,20 +1213,463 @@ function roiBenefits(): OrgChart {
   )
 }
 
+/* ----------------------------------------------------- management pack */
+
+/** Template 23 — key-personnel profile cards: a row of leader cards with
+ *  photo, tenure, clearance and discriminator rows. */
+function keyPersonnel(): OrgChart {
+  const person = (
+    title: string,
+    name: string,
+    bullets: string[],
+    tenure: string,
+    discriminator: string,
+  ): OrgNode =>
+    node({
+      title,
+      name,
+      photo: true,
+      variant: 'primary',
+      width: 250,
+      badges: ['keyGold'],
+      bullets,
+      details: [
+        { label: 'Tenure:', text: tenure },
+        { label: 'Discriminator:', text: discriminator },
+      ],
+    })
+  return {
+    version: 1,
+    meta: {
+      title: 'Key Personnel',
+      showTitle: true,
+      caption:
+        'Every RFP-required key person is named, cleared, and already working this mission — no contingent hires, no learning curve on day one.',
+    },
+    roots: [
+      node({
+        title: '',
+        variant: 'hidden',
+        childLayout: 'row',
+        children: [
+          person(
+            'Program Manager',
+            'Name, PMP',
+            ['15 yrs test-operations leadership', 'PMP; DAWIA PM Level III', 'TS clearance'],
+            '12 yrs Astrion',
+            'Led three similar transitions at 95%+ incumbent capture',
+          ),
+          person(
+            'Deputy PM / Operations',
+            'Name',
+            ['Incumbent deputy on this contract', '20 yrs facility operations', 'Secret clearance'],
+            'Incumbent',
+            'Zero-gap continuity of daily operations',
+          ),
+          person(
+            'Chief Engineer',
+            'Name, PE',
+            ['MBSE / digital-engineering lead', 'INCOSE CSEP; PE', 'TS/SCI clearance'],
+            '9 yrs Astrion',
+            'Delivered the reference DAQ modernization',
+          ),
+          person(
+            'Quality & Safety Lead',
+            'Name, CMQ/OE',
+            ['ISO 9001 / AS9100 program lead', 'ASQ CMQ/OE; CSP', 'Secret clearance'],
+            '11 yrs Astrion',
+            'Zero lost-time incidents across 4 contracts',
+          ),
+        ],
+      }),
+    ],
+    groups: [],
+    comms: [],
+    legend: [{ id: uid('l'), marker: 'keyGold', label: 'RFP-required key person' }],
+  }
+}
+
+/** Template 24 — governance model: tiered decision boards with cadence and
+ *  decision rights, plus the customer interface. */
+function governance(): OrgChart {
+  const board = (
+    title: string,
+    variant: OrgNode['variant'],
+    cadence: string,
+    decides: string,
+    bullets?: string[],
+  ): OrgNode =>
+    node({
+      title,
+      variant,
+      width: 230,
+      ...(bullets ? { bullets } : {}),
+      details: [
+        { label: 'Cadence:', text: cadence },
+        { label: 'Decides:', text: decides },
+      ],
+    })
+
+  const trb = board('Technical Review Board', 'secondary', 'Weekly', 'Designs, technical baselines')
+  const rob = board('Risk & Opportunity Board', 'secondary', 'Bi-weekly', 'Mitigations, risk acceptance')
+  const ccb = board('Change Control Board', 'secondary', 'On demand', 'Scope, schedule, config changes')
+  const pmb = board(
+    'Program Management Board',
+    'primary',
+    'Monthly',
+    'Cost, schedule, staffing, CPARS inputs',
+    undefined,
+  )
+  pmb.children = [trb, rob, ccb]
+  const esg = board(
+    'Executive Steering Group',
+    'primary',
+    'Quarterly',
+    'Strategy, investment, contract-level escalations',
+  )
+  esg.children = [pmb]
+
+  const customer = [
+    node({ title: 'Customer Leadership', variant: 'tertiary', width: 200 }),
+    node({ title: 'CO / COR', variant: 'tertiary', width: 200 }),
+  ]
+
+  return {
+    version: 1,
+    meta: {
+      title: 'Program Governance Model',
+      showTitle: true,
+      caption:
+        'Decisions are made at the lowest tier with the authority to make them; anything unresolved moves up one tier on a defined clock, so no decision waits on a meeting.',
+    },
+    roots: [esg, node({ title: 'Customer', variant: 'hidden', childLayout: 'stack', children: customer })],
+    groups: [
+      { id: uid('g'), label: 'Working boards', style: 'blue', memberIds: [trb.id, rob.id, ccb.id] },
+    ],
+    comms: [
+      { id: uid('c'), fromId: customer[0].id, toId: esg.id, arrow: 'both', style: 'dashed', label: 'Strategic insight' },
+      { id: uid('c'), fromId: customer[1].id, toId: pmb.id, arrow: 'both', style: 'dashed', label: 'Direction & feedback' },
+    ],
+    legend: [
+      { id: uid('l'), marker: 'boxPrimary', label: 'Decision authority' },
+      { id: uid('l'), marker: 'boxSecondary', label: 'Working board' },
+      { id: uid('l'), marker: 'boxTertiary', label: 'Customer' },
+      { id: uid('l'), marker: 'comm', label: 'Customer interface' },
+    ],
+  }
+}
+
+/** Template 25 — escalation path: an issue ladder with authority and clocks,
+ *  and customer notification at every rung. */
+function escalationPath(): OrgChart {
+  const rung = (title: string, authority: string, clock: string, variant: OrgNode['variant']): OrgNode =>
+    node({
+      title,
+      variant,
+      width: 220,
+      details: [
+        { label: 'Authority:', text: authority },
+        { label: 'Resolve within:', text: clock },
+      ],
+    })
+
+  const sponsor = rung('Executive Sponsor', 'Corporate resources, contract actions', '48 hours', 'primary')
+  const director = rung('PMO Director', 'Cross-program staffing, subcontracts', '24 hours', 'primary')
+  const pm = rung('Program Manager', 'Program resources, schedule, priorities', '8 hours', 'secondary')
+  const lead = rung('Task Lead', 'Task-level workarounds and rework', '4 hours', 'secondary')
+  const issue = node({ title: 'Issue Identified', variant: 'tertiary', width: 180 })
+  issue.children = [lead]
+  lead.children = [pm]
+  pm.children = [director]
+  director.children = [sponsor]
+
+  const cor = node({ title: 'Customer COR', variant: 'accent', width: 180 })
+
+  return {
+    version: 1,
+    meta: {
+      title: 'Issue Escalation Path',
+      showTitle: true,
+      direction: 'LR',
+      caption:
+        'Every issue has an owner and a clock: unresolved issues escalate one level on a fixed timeline, and the COR is notified at the first escalation — no surprises at the PMR.',
+    },
+    roots: [issue, cor],
+    groups: [],
+    comms: [
+      { id: uid('c'), fromId: pm.id, toId: cor.id, arrow: 'end', style: 'dashed', label: 'Notify ≤ 4 hrs' },
+      { id: uid('c'), fromId: sponsor.id, toId: cor.id, arrow: 'end', style: 'dashed', label: 'Joint resolution' },
+    ],
+    legend: [
+      { id: uid('l'), marker: 'boxSecondary', label: 'Program resolution' },
+      { id: uid('l'), marker: 'boxPrimary', label: 'Corporate resolution' },
+      { id: uid('l'), marker: 'comm', label: 'Customer notification' },
+    ],
+  }
+}
+
+/** Template 26 — communication battle rhythm (meeting cadence) table. */
+function battleRhythm(): OrgChart {
+  const row = (forum: string, cadence: string, chair: string, who: string, outputs: string) => ({
+    cells: [cell(forum), cell(cadence, 'info'), cell(chair), cell(who), cell(outputs)],
+  })
+  return {
+    version: 1,
+    meta: {
+      title: 'Communication Battle Rhythm',
+      showTitle: true,
+      layout: 'table',
+      caption:
+        'A fixed operating rhythm keeps every stakeholder informed on a schedule they can plan around — decisions have a forum, and every forum has an owner and an output.',
+    },
+    roots: placeholderRoots(),
+    groups: [],
+    comms: [],
+    legend: [],
+    table: {
+      columns: [
+        { label: 'Forum', width: 190, align: 'left' },
+        { label: 'Cadence' },
+        { label: 'Chair', width: 130, align: 'left' },
+        { label: 'Participants', width: 210, align: 'left' },
+        { label: 'Key Outputs', width: 210, align: 'left' },
+      ],
+      rows: [
+        { header: true, cells: [cell('Internal battle rhythm')] },
+        row('Ops standup', 'Daily', 'Ops Lead', 'Task leads, shift supervisors', 'Status, blockers, safety notes'),
+        row('Risk & Opportunity Board', 'Bi-weekly', 'Deputy PM', 'Task leads, risk owners', 'Register updates, burndown'),
+        row('Quality review', 'Monthly', 'QA Lead', 'Task leads, process owners', 'Audit results, CAPs'),
+        { header: true, cells: [cell('Customer-facing forums')] },
+        row('Program Management Review', 'Monthly', 'PM', 'COR, customer leads, division chiefs', 'Metrics, deliverable status'),
+        row('Executive Steering Group', 'Quarterly', 'Executive Sponsor', 'Customer leadership, corporate execs', 'Strategy, investment decisions'),
+        row('Contract status letter', 'Monthly', 'PM', 'CO / COR', 'Formal status, forecast'),
+      ],
+    },
+  }
+}
+
+/** Template 27 — Integrated Master Schedule: the full period of performance
+ *  (base + option years) on a month axis, not just the 90-day transition. */
+function integratedMasterSchedule(): OrgChart {
+  const task = (
+    title: string,
+    start: number,
+    duration: number,
+    variant: OrgNode['variant'] = 'secondary',
+    children?: OrgNode[],
+  ): OrgNode => node({ title, variant, start, duration, ...(children ? { children } : {}) })
+  const ms = (title: string, at: number): OrgNode =>
+    node({ title, variant: 'accent', start: at, milestone: true })
+
+  const transition = task('Transition-In', 0, 3, 'primary')
+  const pm = task('Program Management & Control', 0, 60, 'primary')
+  const ops = task('Test Operations', 2, 58, 'secondary', [
+    task('Wind Tunnel Operations', 2, 58, 'tertiary'),
+    task('Propulsion Test Operations', 4, 56, 'tertiary'),
+  ])
+  const eng = task('Engineering & Modernization', 6, 36, 'secondary', [
+    task('DAQ Modernization', 6, 18, 'tertiary'),
+    task('Facility Upgrades', 24, 18, 'tertiary'),
+  ])
+  const digital = task('Digital Transformation', 12, 30, 'secondary')
+  const recompete = task('Follow-on Transition Support', 57, 3, 'accent')
+
+  return {
+    version: 1,
+    meta: {
+      title: 'Integrated Master Schedule',
+      showTitle: true,
+      layout: 'timeline',
+      caption:
+        'The IMS ties every workstream to the option-year structure: modernization lands in the base period, digital transformation reaches IOC in option year 2, and follow-on transition support protects the customer at contract end.',
+    },
+    schedule: {
+      unit: 'month',
+      span: 60,
+      phases: [
+        { label: 'Base Yr', at: 12 },
+        { label: 'OY1', at: 24 },
+        { label: 'OY2', at: 36 },
+        { label: 'OY3', at: 48 },
+        { label: 'OY4', at: 60 },
+      ],
+    },
+    roots: [
+      ms('Award', 0),
+      transition,
+      pm,
+      ops,
+      eng,
+      digital,
+      ms('Digital Twin IOC', 36),
+      recompete,
+      ms('Contract End', 60),
+    ],
+    groups: [
+      { id: uid('g'), label: 'Stand-up', style: 'green', memberIds: [transition.id] },
+      { id: uid('g'), label: 'Operations', style: 'blue', memberIds: [pm.id, ops.id] },
+      { id: uid('g'), label: 'Modernization', style: 'orange', memberIds: [eng.id, digital.id] },
+    ],
+    comms: [],
+    legend: [],
+  }
+}
+
+/** Template 28 — contract heritage timeline: a decade of relevant contracts
+ *  as bars on a month axis, ending at this RFP. */
+function contractHeritage(): OrgChart {
+  const contract = (title: string, start: number, duration: number, variant: OrgNode['variant']): OrgNode =>
+    node({ title, variant, start, duration })
+  const aedc = contract('AEDC Test Operations Support — USAF', 0, 96, 'primary')
+  const nasa = contract('Propulsion Test Services — NASA SSC', 24, 84, 'secondary')
+  const range = contract('Range Instrumentation — USSF SLD 45', 12, 60, 'secondary')
+  const baseops = contract('Base Ops & Sustainment — AFMC', 60, 60, 'tertiary')
+
+  return {
+    version: 1,
+    meta: {
+      title: 'Contract Heritage',
+      showTitle: true,
+      layout: 'timeline',
+      caption:
+        'A decade of continuous, overlapping performance on this mission — the team proposed here is the team that has been doing this work, without a break, since 2016.',
+    },
+    schedule: {
+      unit: 'month',
+      span: 120,
+      phases: [
+        { label: '2018', at: 24 },
+        { label: '2020', at: 48 },
+        { label: '2022', at: 72 },
+        { label: '2024', at: 96 },
+        { label: 'This RFP', at: 120 },
+      ],
+    },
+    roots: [aedc, nasa, range, baseops, node({ title: 'Proposed period of performance', variant: 'accent', start: 120, milestone: true })],
+    groups: [
+      { id: uid('g'), label: 'Test operations', style: 'blue', memberIds: [aedc.id, nasa.id] },
+      { id: uid('g'), label: 'Range & base operations', style: 'green', memberIds: [range.id, baseops.id] },
+    ],
+    comms: [],
+    legend: [],
+  }
+}
+
+/** Template 29 — swimlane process flow: a task order moving across the
+ *  customer, PMO, delivery, and quality lanes with hand-off arrows. */
+function processFlow(): OrgChart {
+  const step = (title: string, variant: OrgNode['variant'] = 'secondary'): OrgNode =>
+    node({ title, variant, width: 190 })
+
+  const received = step('1. Task order received', 'tertiary')
+  const scope = step('2. Scope & estimate')
+  const kickoff = step('3. Kickoff & staffing')
+  const execute = step('4. Execute work', 'primary')
+  const qa = step('5. QA review & surveillance')
+  const accept = step('6. Customer acceptance', 'tertiary')
+  const lessons = step('7. Lessons learned & metrics')
+
+  return {
+    version: 1,
+    meta: {
+      title: 'Task Order Delivery Process',
+      showTitle: true,
+      layout: 'swimlane',
+      caption:
+        'One accountable owner per step and a quality gate before anything reaches the customer — the same repeatable flow on every task order, from receipt to lessons learned.',
+    },
+    roots: [received, scope, kickoff, execute, qa, accept, lessons],
+    groups: [
+      { id: uid('g'), label: 'Customer', style: 'green', memberIds: [received.id, accept.id] },
+      { id: uid('g'), label: 'PMO', style: 'blue', memberIds: [scope.id, kickoff.id, lessons.id] },
+      { id: uid('g'), label: 'Delivery Team', style: 'orange', memberIds: [execute.id] },
+      { id: uid('g'), label: 'Quality', style: 'dashed', memberIds: [qa.id] },
+    ],
+    comms: [
+      { id: uid('c'), fromId: received.id, toId: scope.id, arrow: 'end' },
+      { id: uid('c'), fromId: scope.id, toId: kickoff.id, arrow: 'end' },
+      { id: uid('c'), fromId: kickoff.id, toId: execute.id, arrow: 'end' },
+      { id: uid('c'), fromId: execute.id, toId: qa.id, arrow: 'end' },
+      { id: uid('c'), fromId: qa.id, toId: execute.id, arrow: 'end', style: 'dashed', label: 'Rework' },
+      { id: uid('c'), fromId: qa.id, toId: accept.id, arrow: 'end' },
+      { id: uid('c'), fromId: accept.id, toId: lessons.id, arrow: 'end' },
+    ],
+    legend: [],
+  }
+}
+
+/** Template 30 — current state vs. future state: two zoned columns with the
+ *  transition arrow between them. */
+function currentVsFuture(): OrgChart {
+  const item = (title: string, variant: OrgNode['variant']): OrgNode => node({ title, variant, width: 230 })
+
+  const current = node({
+    title: 'Current State',
+    variant: 'accent',
+    width: 250,
+    childLayout: 'stack',
+    children: [
+      item('Reactive, run-to-failure maintenance', 'tertiary'),
+      item('Manual data collection & reporting', 'tertiary'),
+      item('Siloed systems, swivel-chair interfaces', 'tertiary'),
+      item('12-month hiring & clearance pipeline', 'tertiary'),
+    ],
+  })
+  const future = node({
+    title: 'Future State — Astrion',
+    variant: 'primary',
+    width: 250,
+    childLayout: 'stack',
+    children: [
+      item('Predictive maintenance, 99.9% availability', 'secondary'),
+      item('Automated DAQ feeding a digital twin', 'secondary'),
+      item('Integrated dashboards, one source of truth', 'secondary'),
+      item('90-day cleared staffing pipeline', 'secondary'),
+    ],
+  })
+
+  return {
+    version: 1,
+    meta: {
+      title: 'Current State vs. Future State',
+      showTitle: true,
+      caption:
+        'Each future-state capability is funded, scheduled in the IMS, and proven on a referenced contract — this is a transition plan, not a vision statement.',
+    },
+    roots: [current, future],
+    groups: [
+      { id: uid('g'), label: 'Today', style: 'orange', memberIds: [current.id] },
+      { id: uid('g'), label: 'With Astrion', style: 'green', memberIds: [future.id] },
+    ],
+    comms: [
+      { id: uid('c'), fromId: current.id, toId: future.id, arrow: 'end', label: 'Astrion transition' },
+    ],
+    legend: [],
+  }
+}
+
 export const templates: { key: string; label: string; build: () => OrgChart }[] = [
   { key: 'simple-hierarchy', label: 'Simple Hierarchy (clean top-down)', build: simpleHierarchy },
   { key: 'functional-divisions', label: 'Functional Divisions (department stacks)', build: functionalDivisions },
   { key: 'program-office', label: 'Program Office (capability stacks)', build: programOffice },
   { key: 'director-level', label: 'Director Level (PWS & deliverables)', build: directorLevel },
+  { key: 'key-personnel', label: 'Key Personnel (profile cards)', build: keyPersonnel },
+  { key: 'governance', label: 'Governance Model (boards & tiers)', build: governance },
+  { key: 'escalation', label: 'Escalation Path (issues & clocks)', build: escalationPath },
+  { key: 'process-flow', label: 'Process Flow (swimlanes)', build: processFlow },
+  { key: 'current-future', label: 'Current vs. Future State', build: currentVsFuture },
   { key: 'wbs', label: 'Work Breakdown Structure (numbered)', build: wbs },
   { key: 'teaming', label: 'Teaming & Workshare (prime / subs)', build: teaming },
   { key: 'transition', label: 'Transition Schedule (30/60/90-day)', build: transitionSchedule },
+  { key: 'ims', label: 'Integrated Master Schedule (5-year)', build: integratedMasterSchedule },
+  { key: 'heritage', label: 'Contract Heritage (timeline)', build: contractHeritage },
   { key: 'risk-cube', label: 'Risk Cube (5×5 heatmap)', build: riskCube },
   { key: 'staffing-ramp', label: 'Staffing Ramp (area chart)', build: staffingRamp },
   { key: 'risk-burndown', label: 'Risk Burndown (line chart)', build: riskBurndown },
   { key: 'roi', label: 'ROI & Benefits (bar + line)', build: roiBenefits },
   { key: 'raci', label: 'RACI Matrix (responsibility)', build: raciMatrix },
   { key: 'qasp', label: 'QASP / SLA Metrics (table)', build: qaspMetrics },
+  { key: 'battle-rhythm', label: 'Battle Rhythm (meeting cadence)', build: battleRhythm },
   { key: 'crosswalk', label: 'Section L-to-M Crosswalk (table)', build: complianceCrosswalk },
   { key: 'relevance', label: 'Relevance Matrix (past performance)', build: relevanceMatrix },
   { key: 'skills', label: 'Labor Category & Skills Matrix', build: skillsMatrix },
