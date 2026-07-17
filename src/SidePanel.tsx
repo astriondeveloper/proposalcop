@@ -17,6 +17,8 @@ import type {
   RiskCube,
   RiskItem,
   SchedulePhase,
+  StatIcon,
+  StatItem,
   TableDef,
   Variant,
   XYChart,
@@ -42,6 +44,7 @@ import {
   REF_KINDS,
   riskLevel,
   setNodePos,
+  STAT_ICONS,
   tableAddColumn,
   tableAddRow,
   tableMoveColumn,
@@ -1087,6 +1090,108 @@ function ChartEditor({ chart, onChange, onSelect }: Props) {
           onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, caption: e.target.value || undefined } })}
         />
       </label>
+      <fieldset>
+        <legend>Persuasion (win theme, stats, pull quote)</legend>
+        <label>Win-theme banner (strip above the graphic)
+          <textarea
+            rows={2}
+            value={chart.meta.winTheme ?? ''}
+            placeholder="e.g. Zero-gap transition: the incumbent team, modern tooling, and a funded burn-down for every risk."
+            onChange={(e) => onChange({ ...chart, meta: { ...chart.meta, winTheme: e.target.value || undefined } })}
+          />
+        </label>
+
+        <div className="phase-head">Stat strip (big numbers under the graphic)</div>
+        {(chart.meta.stats ?? []).map((s, i) => {
+          const patchStat = (p: Partial<StatItem>) => {
+            const stats = clone(chart.meta.stats ?? [])
+            stats[i] = { ...stats[i], ...p }
+            if (!p.icon && 'icon' in p) delete stats[i].icon
+            onChange({ ...chart, meta: { ...chart.meta, stats } })
+          }
+          return (
+            <div key={i} className="detail-row">
+              <select
+                className="stat-icon"
+                aria-label="Stat icon"
+                value={s.icon ?? ''}
+                onChange={(e) => patchStat({ icon: (e.target.value || undefined) as StatIcon | undefined })}
+              >
+                <option value="">· no icon</option>
+                {STAT_ICONS.map((ic) => <option key={ic} value={ic}>{ic}</option>)}
+              </select>
+              <input
+                className="stat-value"
+                value={s.value}
+                placeholder="99.9%"
+                aria-label="Stat value"
+                onChange={(e) => patchStat({ value: e.target.value })}
+              />
+              <input
+                value={s.label}
+                placeholder="availability"
+                aria-label="Stat label"
+                onChange={(e) => patchStat({ label: e.target.value })}
+              />
+              <button
+                className="danger sm"
+                aria-label="Remove stat"
+                onClick={() => {
+                  const stats = (chart.meta.stats ?? []).filter((_, j) => j !== i)
+                  onChange({ ...chart, meta: { ...chart.meta, stats: stats.length ? stats : undefined } })
+                }}
+              >×</button>
+            </div>
+          )
+        })}
+        <button
+          className="sm"
+          onClick={() =>
+            onChange({
+              ...chart,
+              meta: { ...chart.meta, stats: [...(chart.meta.stats ?? []), { value: '', label: '', icon: 'star' }] },
+            })
+          }
+        >+ Stat</button>
+
+        <label>Pull quote (customer / PWS)
+          <textarea
+            rows={2}
+            value={chart.meta.quote?.text ?? ''}
+            placeholder="e.g. The contractor consistently exceeded availability requirements while reducing cost."
+            onChange={(e) =>
+              onChange({
+                ...chart,
+                meta: {
+                  ...chart.meta,
+                  quote: e.target.value
+                    ? { ...(chart.meta.quote ?? {}), text: e.target.value }
+                    : undefined,
+                },
+              })
+            }
+          />
+        </label>
+        {chart.meta.quote && (
+          <label>Quote source
+            <input
+              value={chart.meta.quote.source ?? ''}
+              placeholder="e.g. CPARS, FY24"
+              onChange={(e) =>
+                onChange({
+                  ...chart,
+                  meta: { ...chart.meta, quote: { ...chart.meta.quote!, source: e.target.value || undefined } },
+                })
+              }
+            />
+          </label>
+        )}
+        <p className="hint">
+          These render on every layout and travel into all exports — the win theme above the
+          graphic, stats and quote beneath it, above the caption.
+        </p>
+      </fieldset>
+
       <label>Classification / CUI banner (top &amp; bottom, in exports)
         <input
           list="banner-presets"

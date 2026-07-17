@@ -9,6 +9,7 @@ import type {
   RefKind,
   RiskItem,
   RiskLevel,
+  StatIcon,
   XYSeriesKind,
 } from './model'
 import { clone, riskLevel, visit, wbsNumbers } from './model'
@@ -135,6 +136,42 @@ export interface TimelineLayout {
 /** Wrapped action caption beneath the graphic (carried into exports). */
 export interface CaptionLayout {
   lines: string[]
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** Win-theme banner strip above the graphic. */
+export interface WinThemeLayout {
+  lines: string[]
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export interface StatTileLayout {
+  icon?: StatIcon
+  value: string
+  label: string
+  x: number
+  w: number
+}
+
+/** Icon-based stat strip beneath the graphic. */
+export interface StatStripLayout {
+  x: number
+  y: number
+  w: number
+  h: number
+  tiles: StatTileLayout[]
+}
+
+/** Customer / PWS pull-quote callout beneath the graphic. */
+export interface QuoteLayout {
+  lines: string[]
+  source: string | null
   x: number
   y: number
   w: number
@@ -271,6 +308,15 @@ export interface Layout {
   /** XY-chart geometry when the 'xy' layout is active. */
   xy: XYLayout | null
   caption: CaptionLayout | null
+  /** Win-theme banner strip above the graphic (persuasion layer). */
+  winTheme: WinThemeLayout | null
+  /** Vertical offset the renderer applies to the content group so the
+   *  win-theme strip has room at the top. 0 when there is no strip. */
+  contentShift: number
+  /** Icon-based stat strip beneath the graphic (persuasion layer). */
+  stats: StatStripLayout | null
+  /** Pull-quote callout beneath the graphic (persuasion layer). */
+  quote: QuoteLayout | null
   /** Classification / CUI marking text, rendered as top + bottom banners. */
   banner: string | null
   width: number
@@ -289,6 +335,106 @@ function captionLayout(chart: OrgChart, contentW: number, bottomY: number): Capt
   const w = Math.max(240, Math.min(CAPTION_MAXW, contentW))
   const lines = wrapText(text, CAPTION_SIZE, w)
   return { lines, x: M.canvasPad, y: bottomY + 18, w, h: lines.length * CAPTION_LH }
+}
+
+/* Persuasion-layer metrics. */
+const WT_SIZE = 14
+const WT_LH = 20
+const WT_PAD_X = 16
+const WT_PAD_Y = 11
+const WT_GAP = 16 // gap between the strip and the shifted content
+const STAT_VALUE_SIZE = 21
+const STAT_LABEL_SIZE = 10.5
+const STAT_TILE_H = 52
+const STAT_PAD_X = 18
+const QUOTE_SIZE = 12.5
+const QUOTE_LH = 18
+const QUOTE_MAXW = 720
+
+/** The persuasion adornments plus the final canvas bounds. Shared by every
+ *  layout strategy so the win theme / stats / quote / caption stack renders
+ *  identically over node charts and data charts. */
+interface AdornedTail {
+  winTheme: WinThemeLayout | null
+  contentShift: number
+  stats: StatStripLayout | null
+  quote: QuoteLayout | null
+  caption: CaptionLayout | null
+  width: number
+  height: number
+}
+
+/**
+ * Lay out the persuasion stack around already-computed content: the win-theme
+ * strip above (content is shifted down by `contentShift`), then stats, pull
+ * quote, and caption stacked beneath `contentBottom`, all in content
+ * coordinates. Also resolves the final canvas width/height.
+ */
+function adornAndBound(chart: OrgChart, rightEdge: number, contentBottom: number): AdornedTail {
+  const contentW = Math.max(320, rightEdge - M.canvasPad)
+
+  // Win-theme strip at the very top; the renderer shifts everything else down.
+  let winTheme: WinThemeLayout | null = null
+  let contentShift = 0
+  const wt = chart.meta.winTheme?.trim()
+  if (wt) {
+    const lines = wrapText(wt, WT_SIZE, contentW - WT_PAD_X * 2 - 6, true)
+    winTheme = {
+      lines,
+      x: M.canvasPad,
+      y: M.canvasPad,
+      w: contentW,
+      h: lines.length * WT_LH + WT_PAD_Y * 2,
+    }
+    contentShift = winTheme.h + WT_GAP
+  }
+
+  // Stat strip beneath the content.
+  let stats: StatStripLayout | null = null
+  let cursor = contentBottom
+  const items = chart.meta.stats ?? []
+  if (items.length) {
+    const tiles: StatTileLayout[] = []
+    let x = M.canvasPad
+    for (const s of items) {
+      const iconW = s.icon ? 26 : 0
+      // Labels render all-caps, so measure the uppercased text.
+      const w =
+        Math.max(
+          88,
+          iconW + textWidth(s.value, STAT_VALUE_SIZE, true) + 8,
+          textWidth(s.label.toUpperCase(), STAT_LABEL_SIZE) + 8,
+        ) + STAT_PAD_X * 2
+      tiles.push({ ...(s.icon ? { icon: s.icon } : {}), value: s.value, label: s.label, x, w })
+      x += w
+    }
+    stats = { x: M.canvasPad, y: cursor + 24, w: x - M.canvasPad, h: STAT_TILE_H, tiles }
+    cursor = stats.y + stats.h
+  }
+
+  // Pull quote beneath the stats.
+  let quote: QuoteLayout | null = null
+  if (chart.meta.quote?.text) {
+    const w = Math.max(240, Math.min(QUOTE_MAXW, contentW))
+    const lines = wrapText(`“${chart.meta.quote.text}”`, QUOTE_SIZE, w - 16)
+    const source = chart.meta.quote.source ?? null
+    quote = {
+      lines,
+      source,
+      x: M.canvasPad,
+      y: cursor + 20,
+      w,
+      h: lines.length * QUOTE_LH + (source ? 17 : 0) + 6,
+    }
+    cursor = quote.y + quote.h
+  }
+
+  const caption = captionLayout(chart, contentW, cursor)
+  const bottom = caption ? caption.y + caption.h : cursor
+  const width =
+    Math.max(rightEdge, stats ? stats.x + stats.w : 0, quote ? quote.x + quote.w : 0, caption ? caption.x + caption.w : 0) +
+    M.canvasPad
+  return { winTheme, contentShift, stats, quote, caption, width, height: contentShift + bottom + M.canvasPad }
 }
 
 /* ---------------------------------------------------------- text metrics */
@@ -592,16 +738,17 @@ function titleBlock(chart: OrgChart): Layout['title'] {
   }
 }
 
-/** Shared tail for the data layouts (timeline / table / risk / xy): wraps the
- *  caption, computes the canvas bounds, and fills the node-layout fields with
- *  empty defaults. `parts` carries the layout-specific geometry. */
+/** Shared tail for the data layouts (timeline / table / risk / xy): lays out
+ *  the persuasion stack + caption, computes the canvas bounds, and fills the
+ *  node-layout fields with empty defaults. `parts` carries the layout-specific
+ *  geometry. */
 function finishDataLayout(
   chart: OrgChart,
   contentRight: number,
   contentBottom: number,
   parts: Partial<Layout>,
 ): Layout {
-  const caption = captionLayout(chart, contentRight - M.canvasPad, contentBottom)
+  const adorned = adornAndBound(chart, contentRight, contentBottom)
   return {
     placed: [],
     connectors: [],
@@ -614,10 +761,8 @@ function finishDataLayout(
     table: null,
     risk: null,
     xy: null,
-    caption,
     banner: chart.meta.banner ?? null,
-    width: Math.max(contentRight, caption ? caption.x + caption.w : 0) + M.canvasPad,
-    height: (caption ? caption.y + caption.h : contentBottom) + M.canvasPad,
+    ...adorned,
     ...parts,
   }
 }
@@ -738,9 +883,7 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
   const complianceBottom = compliance ? compliance.panel.y + compliance.panel.h : 0
   const rightEdge = Math.max(contentRight, titleRight, complianceRight)
   const contentBottom = Math.max(maxY, legend ? legend.y + legend.h : 0, complianceBottom)
-  const caption = captionLayout(chart, rightEdge - M.canvasPad, contentBottom)
-  const width = Math.max(rightEdge, caption ? caption.x + caption.w : 0) + M.canvasPad
-  const height = (caption ? caption.y + caption.h : contentBottom) + M.canvasPad
+  const adorned = adornAndBound(chart, rightEdge, contentBottom)
 
   return {
     placed,
@@ -754,10 +897,8 @@ function assemble(chart: OrgChart, placed: PlacedNode[], connectors: string[]): 
     table: null,
     risk: null,
     xy: null,
-    caption,
     banner: chart.meta.banner ?? null,
-    width,
-    height,
+    ...adorned,
   }
 }
 

@@ -293,14 +293,14 @@ export default function App() {
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
     requestAnimationFrame(() => {
       const cx = 24 + (p.x + p.w / 2) * z
-      const cy = 24 + (p.y + p.totalH / 2) * z
+      const cy = 24 + (p.y + layout.contentShift + p.totalH / 2) * z
       el.scrollTo({
         left: cx - el.clientWidth / 2,
         top: cy - el.clientHeight / 2,
         behavior: smooth ? 'smooth' : 'auto',
       })
     })
-  }, [selectedId, layout.placed])
+  }, [selectedId, layout.placed, layout.contentShift])
 
   // Position the floating contextual toolbar over the selected box. The
   // .svg-host bounding rect already bakes in the zoom transform and scroll
@@ -321,9 +321,10 @@ export default function App() {
     const hostRect = host.getBoundingClientRect()
     // .svg-host is scaled by `zoom` from its top-left origin, so hostRect's
     // top-left is SVG coord (0,0) and `zoom` maps SVG units to screen px.
+    // Boxes live in the win-theme-shifted content group, hence contentShift.
     const z = zoom
     const nodeL = hostRect.left + p.x * z
-    const nodeT = hostRect.top + p.y * z
+    const nodeT = hostRect.top + (p.y + view.contentShift) * z
     const nodeW = p.w * z
     const nodeH = p.totalH * z
     const nodeCX = nodeL + nodeW / 2
@@ -456,7 +457,7 @@ export default function App() {
     if (!p) return
     const hostRect = host.getBoundingClientRect()
     const nodeL = hostRect.left + p.x * zoom
-    const nodeT = hostRect.top + p.y * zoom
+    const nodeT = hostRect.top + (p.y + layout.contentShift) * zoom
     const nodeR = nodeL + p.w * zoom
     const nodeB = nodeT + p.totalH * zoom
     const view = canvas.getBoundingClientRect()

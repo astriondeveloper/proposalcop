@@ -69,12 +69,14 @@ export function Minimap({ layout, viewport, onNavigate }: Props) {
           }
         }}
       >
+        {/* Boxes render inside the win-theme-shifted content group, so the
+            minimap applies the same offset to match the canvas. */}
         {layout.placed.map((p) => (
           <rect
             key={p.node.id}
             className="mm-node"
             x={p.x * scale}
-            y={p.y * scale}
+            y={(p.y + layout.contentShift) * scale}
             width={p.w * scale}
             height={p.totalH * scale}
             rx={1}
