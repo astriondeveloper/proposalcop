@@ -1117,8 +1117,10 @@ body,
   background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
-/* Transient highlight when a requirement row is jumped to. */
-.req.flash {
+/* Transient highlight when a requirement row or an editor card is jumped to
+   (e.g. after clicking a table cell, risk marker, or series on the canvas). */
+.req.flash,
+.card.flash {
   animation: req-flash 1.6s var(--ease);
 }
 

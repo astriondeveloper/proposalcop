@@ -187,6 +187,7 @@ export interface RiskMarkerLayout {
 
 /** One row in the risk-register panel beside the cube. */
 export interface RiskListRow {
+  id: string
   code: string
   title: string
   /** Position summary, e.g. "L4·C4 → L2·C3". */
@@ -227,6 +228,8 @@ export interface XYSeriesLayout {
 }
 
 export interface XYLegendItem {
+  /** Id of the series this entry represents. */
+  id: string
   label: string
   fill: string
   kind: XYSeriesKind
@@ -1558,6 +1561,7 @@ function layoutRisk(chart: OrgChart): Layout {
     const moveOf = (r: RiskItem) =>
       `L${r.likelihood}·C${r.consequence}${r.residual ? ` → L${r.residual.likelihood}·C${r.residual.consequence}` : ''}`
     const rows: RiskListRow[] = risks.map((r, i) => ({
+      id: r.id,
       code: riskCode(r, i),
       title: r.title,
       move: moveOf(r),
@@ -1726,7 +1730,7 @@ function layoutXY(chart: OrgChart): Layout {
   let lx = x0
   const legend: XYLegendItem[] = legendItems.map((s) => {
     const li = seriesLayouts.find((sl) => sl.id === s.id)!
-    const item: XYLegendItem = { label: s.label, fill: li.fill, kind: s.kind, x: lx, y: oy + 6 }
+    const item: XYLegendItem = { id: s.id, label: s.label, fill: li.fill, kind: s.kind, x: lx, y: oy + 6 }
     lx += 22 + textWidth(s.label, 11) + 18
     return item
   })

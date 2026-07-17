@@ -13,7 +13,19 @@ import { exportJson, exportPng, exportSlidePng, exportSvg } from './export'
 import { exportPdf } from './pdf'
 import { exportPptx } from './pptx'
 import { layoutChart, previewDrag } from './layout'
-import { clone, deleteNode, duplicateNode, normalizeChart, setNodePos, type OrgChart } from './model'
+import {
+  clone,
+  deleteNode,
+  duplicateNode,
+  findNode,
+  normalizeChart,
+  parseSelection,
+  riskSelId,
+  seriesSelId,
+  setNodePos,
+  uid,
+  type OrgChart,
+} from './model'
 import { Minimap, type Viewport } from './Minimap'
 import { type Anchor, NodeToolbar } from './NodeToolbar'
 import { SidePanel } from './SidePanel'
@@ -197,16 +209,53 @@ export default function App() {
         else undo()
       } else if (mod && e.key.toLowerCase() === 'd') {
         if (!selectedId) return
-        e.preventDefault()
-        const r = duplicateNode(chart, selectedId)
-        setChart(r.chart)
-        setSelectedId(r.newId)
+        // Data-element selections (risks, xy series) duplicate in place, just
+        // like boxes do. Table cell/column selections have no duplicate.
+        const sel = parseSelection(selectedId)
+        if (sel?.kind === 'risk' && chart.risk) {
+          const i = chart.risk.risks.findIndex((r) => r.id === sel.id)
+          if (i < 0) return
+          e.preventDefault()
+          const copy = { ...clone(chart.risk.risks[i]), id: uid('r') }
+          delete copy.code // fall back to auto-numbering so codes stay unique
+          const risks = [...chart.risk.risks]
+          risks.splice(i + 1, 0, copy)
+          setChart({ ...chart, risk: { ...chart.risk, risks } })
+          setSelectedId(riskSelId(copy.id))
+        } else if (sel?.kind === 'series' && chart.xy) {
+          const i = chart.xy.series.findIndex((s) => s.id === sel.id)
+          if (i < 0) return
+          e.preventDefault()
+          const copy = { ...clone(chart.xy.series[i]), id: uid('s') }
+          const series = [...chart.xy.series]
+          series.splice(i + 1, 0, copy)
+          setChart({ ...chart, xy: { ...chart.xy, series } })
+          setSelectedId(seriesSelId(copy.id))
+        } else if (!sel && findNode(chart, selectedId)) {
+          e.preventDefault()
+          const r = duplicateNode(chart, selectedId)
+          setChart(r.chart)
+          setSelectedId(r.newId)
+        }
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (!selectedId) return
-        e.preventDefault()
-        setChart(deleteNode(chart, selectedId))
-        setSelectedId(null)
-        canvasRef.current?.focus()
+        const sel = parseSelection(selectedId)
+        if (sel?.kind === 'risk' && chart.risk) {
+          e.preventDefault()
+          setChart({ ...chart, risk: { ...chart.risk, risks: chart.risk.risks.filter((r) => r.id !== sel.id) } })
+          setSelectedId(null)
+          canvasRef.current?.focus()
+        } else if (sel?.kind === 'series' && chart.xy) {
+          e.preventDefault()
+          setChart({ ...chart, xy: { ...chart.xy, series: chart.xy.series.filter((s) => s.id !== sel.id) } })
+          setSelectedId(null)
+          canvasRef.current?.focus()
+        } else if (!sel && findNode(chart, selectedId)) {
+          e.preventDefault()
+          setChart(deleteNode(chart, selectedId))
+          setSelectedId(null)
+          canvasRef.current?.focus()
+        }
       }
     }
     window.addEventListener('keydown', onKey)

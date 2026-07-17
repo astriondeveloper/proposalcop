@@ -4,6 +4,7 @@ import type {
   BadgeType,
   CellStatus,
   CommLink,
+  DataSelection,
   Direction,
   EdgeArrow,
   EdgeStyle,
@@ -37,6 +38,7 @@ import {
   moveNode,
   normalizeChart,
   parsePoints,
+  parseSelection,
   REF_KINDS,
   riskLevel,
   setNodePos,
@@ -477,6 +479,37 @@ function NodeEditor({ chart, onChange, selectedId, onSelect }: Props) {
   )
 }
 
+/**
+ * React to a canvas selection of a data element: scroll its editor card into
+ * view, flash it, and (optionally) focus its primary input so it can be edited
+ * immediately. Returns the card id currently flashing.
+ */
+function useJumpToSelection(
+  selectedId: string | null | undefined,
+  resolve: (sel: DataSelection) => { cardId: string; inputId?: string } | null,
+): string | null {
+  const [flashId, setFlashId] = useState<string | null>(null)
+  const resolveRef = useRef(resolve)
+  resolveRef.current = resolve
+  useEffect(() => {
+    const sel = parseSelection(selectedId)
+    if (!sel) return
+    const target = resolveRef.current(sel)
+    if (!target) return
+    const el = document.getElementById(target.cardId)
+    if (!el) return
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' })
+    setFlashId(target.cardId)
+    if (target.inputId) {
+      document.getElementById(target.inputId)?.focus({ preventScroll: true })
+    }
+    const t = setTimeout(() => setFlashId(null), 1600)
+    return () => clearTimeout(t)
+  }, [selectedId])
+  return flashId
+}
+
 const CELL_STATUS_OPTIONS: { value: '' | CellStatus; label: string }[] = [
   { value: '', label: '· none' },
   { value: 'good', label: '✓ Good (green)' },
@@ -492,10 +525,17 @@ const COLUMN_ALIGNS: { value: 'left' | 'center' | 'right'; label: string }[] = [
 ]
 
 /** Visual editor for the 'table' layout (RACI, QASP/SLA, L-to-M crosswalk...):
- *  columns, rows, per-cell text and status — no JSON required. */
-function TableEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
+ *  columns, rows, per-cell text and status — no JSON required. Clicking a
+ *  cell or column header on the canvas jumps here and focuses its input. */
+function TableEditor({ chart, onChange, selectedId }: Pick<Props, 'chart' | 'onChange' | 'selectedId'>) {
   const table = chart.table
   const setTable = (next: TableDef) => onChange({ ...chart, table: next })
+
+  const flashId = useJumpToSelection(selectedId, (sel) => {
+    if (sel.kind === 'col') return { cardId: `tbl-col-${sel.col}`, inputId: `tbl-col-label-${sel.col}` }
+    if (sel.kind === 'cell') return { cardId: `tbl-row-${sel.row}`, inputId: `tbl-cell-${sel.row}-${sel.col}` }
+    return null
+  })
 
   if (!table) {
     return (
@@ -526,9 +566,10 @@ function TableEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
       <fieldset>
         <legend>Columns ({table.columns.length})</legend>
         {table.columns.map((c, ci) => (
-          <div key={ci} className="card">
+          <div key={ci} id={`tbl-col-${ci}`} className={`card${flashId === `tbl-col-${ci}` ? ' flash' : ''}`}>
             <div className="detail-row">
               <input
+                id={`tbl-col-label-${ci}`}
                 value={c.label}
                 placeholder={`Column ${ci + 1}`}
                 aria-label={`Column ${ci + 1} label`}
@@ -569,7 +610,7 @@ function TableEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
       <fieldset>
         <legend>Rows ({table.rows.length})</legend>
         {table.rows.map((r, ri) => (
-          <div key={ri} className="card">
+          <div key={ri} id={`tbl-row-${ri}`} className={`card${flashId === `tbl-row-${ri}` ? ' flash' : ''}`}>
             <div className="detail-row">
               <span className="row-tag">{r.header ? 'Section' : `Row ${ri + 1}`}</span>
               <button className="sm" title="Move row up" disabled={ri === 0} onClick={() => setTable(tableMoveRow(table, ri, -1))}>↑</button>
@@ -582,6 +623,7 @@ function TableEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
             </div>
             {r.header ? (
               <input
+                id={`tbl-cell-${ri}-0`}
                 value={r.cells[0]?.text ?? ''}
                 placeholder="Section heading"
                 aria-label={`Section heading for row ${ri + 1}`}
@@ -592,6 +634,7 @@ function TableEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
                 <div key={ci} className="detail-row">
                   <span className="detail-label cell-col" title={c.label}>{c.label || `Col ${ci + 1}`}</span>
                   <input
+                    id={`tbl-cell-${ri}-${ci}`}
                     className="detail-text"
                     value={r.cells[ci]?.text ?? ''}
                     aria-label={`${c.label || `Column ${ci + 1}`}, row ${ri + 1}`}
@@ -651,10 +694,15 @@ function starterRiskCube(): RiskCube {
 }
 
 /** Visual editor for the 'risk' layout: the risk register with likelihood /
- *  consequence positions and optional post-mitigation (residual) targets. */
-function RiskEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
+ *  consequence positions and optional post-mitigation (residual) targets.
+ *  Clicking a marker or register row on the canvas jumps to its card here. */
+function RiskEditor({ chart, onChange, selectedId }: Pick<Props, 'chart' | 'onChange' | 'selectedId'>) {
   const cube = chart.risk
   const setCube = (next: RiskCube) => onChange({ ...chart, risk: next })
+
+  const flashId = useJumpToSelection(selectedId, (sel) =>
+    sel.kind === 'risk' ? { cardId: `risk-card-${sel.id}` } : null,
+  )
 
   if (!cube) {
     return (
@@ -717,7 +765,11 @@ function RiskEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
           const level = riskLevel(r.likelihood, r.consequence)
           const residualLevel = r.residual ? riskLevel(r.residual.likelihood, r.residual.consequence) : null
           return (
-            <div key={r.id} className="card">
+            <div
+              key={r.id}
+              id={`risk-card-${r.id}`}
+              className={`card${flashId === `risk-card-${r.id}` ? ' flash' : ''}`}
+            >
               <div className="detail-row">
                 <input
                   className="risk-code"
@@ -859,10 +911,15 @@ function PointsField({ points, onCommit }: { points: XYPoint[]; onCommit: (pts: 
 }
 
 /** Visual editor for the 'xy' layout: axis titles plus one card per series
- *  (label, mark type, brand color, data points). */
-function XYEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
+ *  (label, mark type, brand color, data points). Clicking a series on the
+ *  canvas (line, bars, dots, or legend entry) jumps to its card here. */
+function XYEditor({ chart, onChange, selectedId }: Pick<Props, 'chart' | 'onChange' | 'selectedId'>) {
   const xy = chart.xy
   const setXY = (next: XYChart) => onChange({ ...chart, xy: next })
+
+  const flashId = useJumpToSelection(selectedId, (sel) =>
+    sel.kind === 'series' ? { cardId: `xy-card-${sel.id}` } : null,
+  )
 
   if (!xy) {
     return (
@@ -909,7 +966,7 @@ function XYEditor({ chart, onChange }: Pick<Props, 'chart' | 'onChange'>) {
         <legend>Series ({xy.series.length})</legend>
         {xy.series.length === 0 && <p className="hint">No series yet — add the first one below.</p>}
         {xy.series.map((s, i) => (
-          <div key={s.id} className="card">
+          <div key={s.id} id={`xy-card-${s.id}`} className={`card${flashId === `xy-card-${s.id}` ? ' flash' : ''}`}>
             <div className="detail-row">
               <input
                 value={s.label}
@@ -1787,11 +1844,11 @@ export function SidePanel({
       </div>
       {tab === 'build' &&
         (layoutMode === 'table' ? (
-          <TableEditor chart={props.chart} onChange={props.onChange} />
+          <TableEditor chart={props.chart} onChange={props.onChange} selectedId={props.selectedId} />
         ) : layoutMode === 'risk' ? (
-          <RiskEditor chart={props.chart} onChange={props.onChange} />
+          <RiskEditor chart={props.chart} onChange={props.onChange} selectedId={props.selectedId} />
         ) : layoutMode === 'xy' ? (
-          <XYEditor chart={props.chart} onChange={props.onChange} />
+          <XYEditor chart={props.chart} onChange={props.onChange} selectedId={props.selectedId} />
         ) : (
           <>
             <NodeTree chart={props.chart} selectedId={props.selectedId} onSelect={props.onSelect} />

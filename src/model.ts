@@ -420,6 +420,53 @@ export interface OrgChart {
   xy?: XYChart
 }
 
+/* ------------------------------------------------- data-element selection */
+
+/**
+ * The app has one selection channel (a string id). Node layouts select boxes
+ * by the node's own id; elements of the data layouts (table cells/columns,
+ * risks, xy series) use these prefixed forms so clicking them on the canvas
+ * can drive the matching side-panel editor.
+ */
+export type DataSelection =
+  | { kind: 'cell'; row: number; col: number }
+  | { kind: 'col'; col: number }
+  | { kind: 'risk'; id: string }
+  | { kind: 'series'; id: string }
+
+export const cellSelId = (row: number, col: number): string => `cell:${row}:${col}`
+export const colSelId = (col: number): string => `col:${col}`
+export const riskSelId = (id: string): string => `risk:${id}`
+export const seriesSelId = (id: string): string => `series:${id}`
+
+/** Parse a selection id into its data-element form, or null when it is not a
+ *  data-element id (e.g. a node id, or nothing selected). */
+export function parseSelection(sel: string | null | undefined): DataSelection | null {
+  if (!sel) return null
+  const parts = sel.split(':')
+  if (parts[0] === 'cell' && parts.length === 3) {
+    const row = Number(parts[1])
+    const col = Number(parts[2])
+    if (Number.isInteger(row) && row >= 0 && Number.isInteger(col) && col >= 0) {
+      return { kind: 'cell', row, col }
+    }
+    return null
+  }
+  if (parts[0] === 'col' && parts.length === 2) {
+    const col = Number(parts[1])
+    return Number.isInteger(col) && col >= 0 ? { kind: 'col', col } : null
+  }
+  if (parts[0] === 'risk' && parts.length >= 2) {
+    const id = parts.slice(1).join(':')
+    return id ? { kind: 'risk', id } : null
+  }
+  if (parts[0] === 'series' && parts.length >= 2) {
+    const id = parts.slice(1).join(':')
+    return id ? { kind: 'series', id } : null
+  }
+  return null
+}
+
 let counter = 0
 export function uid(prefix = 'n'): string {
   counter += 1
