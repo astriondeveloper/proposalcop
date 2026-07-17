@@ -1118,6 +1118,27 @@ body,
   white-space: nowrap;
 }
 
+/* Library entries. */
+.lib-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--fw-semibold);
+}
+
+.lib-star {
+  color: var(--supernova);
+  margin-right: 5px;
+}
+
+.lib-desc {
+  margin: 4px 0 0;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0.01ms !important;

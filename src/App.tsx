@@ -13,13 +13,15 @@ import { exportJson, exportPng, exportSlidePng, exportSvg } from './export'
 import { exportPdf } from './pdf'
 import { exportPptx } from './pptx'
 import { layoutChart, previewDrag } from './layout'
-import { deleteNode, duplicateNode, normalizeChart, setNodePos, type OrgChart } from './model'
+import { clone, deleteNode, duplicateNode, normalizeChart, setNodePos, type OrgChart } from './model'
 import { Minimap, type Viewport } from './Minimap'
 import { type Anchor, NodeToolbar } from './NodeToolbar'
 import { SidePanel } from './SidePanel'
 import { DEFAULT_TEMPLATE_KEY, templates } from './templates'
+import { type LibraryEntry, normalizeLibrary } from './library'
 
 const STORAGE_KEY = 'astrion-org-chart-v1'
+const LIBRARY_KEY = 'proposalcop-library-v1'
 const SIDEBAR_KEY = 'astrion-sidebar-width-v1'
 const SIDEBAR_MIN = 280
 const SIDEBAR_DEFAULT = 340
@@ -66,6 +68,16 @@ function loadSidebarWidth(): number {
   return raw >= SIDEBAR_MIN && raw <= 900 ? raw : SIDEBAR_DEFAULT
 }
 
+function loadLibrary(): LibraryEntry[] {
+  try {
+    const raw = localStorage.getItem(LIBRARY_KEY)
+    if (raw) return normalizeLibrary(JSON.parse(raw))
+  } catch {
+    /* fall through to empty */
+  }
+  return []
+}
+
 export default function App() {
   const [chart, setChartRaw] = useState<OrgChart>(loadInitial)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -73,6 +85,7 @@ export default function App() {
   const [history, setHistory] = useState<OrgChart[]>([])
   const [future, setFuture] = useState<OrgChart[]>([])
   const [sidebarWidth, setSidebarWidth] = useState<number>(loadSidebarWidth)
+  const [library, setLibrary] = useState<LibraryEntry[]>(loadLibrary)
   const [theme, setTheme] = useState<Theme>(readTheme)
   const [anchor, setAnchor] = useState<Anchor | null>(null)
   const [viewport, setViewport] = useState<Viewport | null>(null)
@@ -142,6 +155,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, String(sidebarWidth))
   }, [sidebarWidth])
+
+  useEffect(() => {
+    localStorage.setItem(LIBRARY_KEY, JSON.stringify(library))
+  }, [library])
 
   // Drag the divider to resize the side panel. Listeners live on the window so
   // the drag keeps tracking even when the pointer leaves the thin handle.
@@ -417,6 +434,13 @@ export default function App() {
     }
   }
 
+  const loadLibraryEntry = (entry: LibraryEntry) => {
+    if (window.confirm(`Replace the current chart with "${entry.name}" from the library?`)) {
+      setChart(normalizeChart(clone(entry.chart)))
+      setSelectedId(null)
+    }
+  }
+
   const importJson = (file: File) => {
     const reader = new FileReader()
     reader.onload = () => {
@@ -620,13 +644,31 @@ export default function App() {
         <select
           className="template-select"
           value=""
-          aria-label="Load a template"
-          onChange={(e) => e.target.value && loadTemplate(e.target.value)}
+          aria-label="Load a template or library entry"
+          onChange={(e) => {
+            const v = e.target.value
+            if (!v) return
+            if (v.startsWith('lib:')) {
+              const entry = library.find((x) => x.id === v.slice(4))
+              if (entry) loadLibraryEntry(entry)
+            } else {
+              loadTemplate(v)
+            }
+          }}
         >
           <option value="">New from template…</option>
-          {templates.map((t) => (
-            <option key={t.key} value={t.key}>{t.label}</option>
-          ))}
+          <optgroup label="Built-in templates">
+            {templates.map((t) => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </optgroup>
+          {library.length > 0 && (
+            <optgroup label="Library">
+              {library.map((e) => (
+                <option key={e.id} value={`lib:${e.id}`}>{e.approved ? '★ ' : ''}{e.name}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
 
         <div className="spacer" />
@@ -712,6 +754,9 @@ export default function App() {
           onChange={setChart}
           selectedId={selectedId}
           onSelect={setSelectedId}
+          library={library}
+          onLibraryChange={setLibrary}
+          onLoadEntry={loadLibraryEntry}
         />
         <div
           className="resizer"

@@ -41,8 +41,15 @@ import {
   refsFromDetails,
   REF_KIND_LABEL,
 } from './compliance'
-import { exportCsv } from './export'
+import { exportCsv, exportLibraryPack } from './export'
 import { workshareRollup } from './teaming'
+import {
+  entryFromChart,
+  type LibraryEntry,
+  makePack,
+  mergeLibrary,
+  normalizeLibrary,
+} from './library'
 import { palette } from './theme'
 import type { ZoneStyle } from './theme'
 
@@ -1049,8 +1056,123 @@ function ComplianceEditor({ chart, onChange, onSelect }: Props) {
   )
 }
 
-export function SidePanel({ width, ...props }: Props & { width: number }) {
-  const [tab, setTab] = useState<'build' | 'chart' | 'compliance' | 'json'>('build')
+type LibraryProps = {
+  library: LibraryEntry[]
+  onLibraryChange: (next: LibraryEntry[]) => void
+  onLoadEntry: (entry: LibraryEntry) => void
+}
+
+function LibraryEditor({ chart, library, onLibraryChange, onLoadEntry }: Pick<Props, 'chart'> & LibraryProps) {
+  const [name, setName] = useState('')
+  const [desc, setDesc] = useState('')
+  const [approved, setApproved] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const addCurrent = () => {
+    const entry = entryFromChart(chart, name, {
+      description: desc,
+      approved,
+      updatedAt: new Date().toISOString(),
+    })
+    onLibraryChange(mergeLibrary(library, [entry]))
+    setName('')
+    setDesc('')
+    setApproved(false)
+  }
+
+  const importPack = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const incoming = normalizeLibrary(JSON.parse(String(reader.result)))
+        if (!incoming.length) {
+          window.alert('No valid library entries were found in that file.')
+          return
+        }
+        onLibraryChange(mergeLibrary(library, incoming))
+      } catch (e) {
+        window.alert(`Could not import: ${e instanceof Error ? e.message : 'invalid file'}`)
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  return (
+    <div className="editor">
+      <p className="hint">
+        A shared set of approved starting points. Save the library as a pack and keep it in a shared
+        folder (e.g. SharePoint); teammates import it and its entries appear in the template picker.
+      </p>
+
+      <fieldset>
+        <legend>Add the current chart</legend>
+        <label>Name
+          <input value={name} placeholder={chart.meta.title || 'Untitled'} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label>Description (optional)
+          <input value={desc} placeholder="When to use this starting point" onChange={(e) => setDesc(e.target.value)} />
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
+          Mark approved for use
+        </label>
+        <button onClick={addCurrent}>+ Add to library</button>
+      </fieldset>
+
+      <fieldset>
+        <legend>Library ({library.length})</legend>
+        {library.length === 0 && <p className="hint">Empty. Add the current chart, or import a pack below.</p>}
+        {library.map((e) => (
+          <div key={e.id} className="card">
+            <div className="ws-row">
+              <span className="lib-name">
+                {e.approved && <span className="lib-star" title="Approved for use">★</span>}
+                {e.name}
+              </span>
+              <button className="sm" onClick={() => onLoadEntry(e)}>Load</button>
+              <button
+                className="danger sm"
+                aria-label="Remove from library"
+                onClick={() => onLibraryChange(library.filter((x) => x.id !== e.id))}
+              >×</button>
+            </div>
+            {e.description && <p className="lib-desc">{e.description}</p>}
+          </div>
+        ))}
+      </fieldset>
+
+      <div className="btn-row">
+        <button
+          disabled={!library.length}
+          onClick={() => exportLibraryPack(makePack(library), 'astrion-proposal-cop-library')}
+        >
+          Export pack
+        </button>
+        <button onClick={() => fileRef.current?.click()}>Import pack</button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json"
+          hidden
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) importPack(f)
+            e.target.value = ''
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+export function SidePanel({
+  width,
+  library,
+  onLibraryChange,
+  onLoadEntry,
+  ...props
+}: Props & { width: number } & LibraryProps) {
+  const [tab, setTab] = useState<'build' | 'chart' | 'compliance' | 'library' | 'json'>('build')
 
   // Selecting a box anywhere (including clicking it in the chart) jumps the
   // panel to the Boxes tab so its editor and tree row are shown immediately.
@@ -1070,6 +1192,7 @@ export function SidePanel({ width, ...props }: Props & { width: number }) {
         <button aria-pressed={tab === 'build'} className={tab === 'build' ? 'active' : ''} onClick={() => setTab('build')}>Boxes</button>
         <button aria-pressed={tab === 'chart'} className={tab === 'chart' ? 'active' : ''} onClick={() => setTab('chart')}>Chart</button>
         <button aria-pressed={tab === 'compliance'} className={tab === 'compliance' ? 'active' : ''} onClick={() => setTab('compliance')}>Compliance</button>
+        <button aria-pressed={tab === 'library'} className={tab === 'library' ? 'active' : ''} onClick={() => setTab('library')}>Library</button>
         <button aria-pressed={tab === 'json'} className={tab === 'json' ? 'active' : ''} onClick={() => setTab('json')}>JSON</button>
       </div>
       {tab === 'build' && (
@@ -1080,6 +1203,14 @@ export function SidePanel({ width, ...props }: Props & { width: number }) {
       )}
       {tab === 'chart' && <ChartEditor {...props} />}
       {tab === 'compliance' && <ComplianceEditor {...props} />}
+      {tab === 'library' && (
+        <LibraryEditor
+          chart={props.chart}
+          library={library}
+          onLibraryChange={onLibraryChange}
+          onLoadEntry={onLoadEntry}
+        />
+      )}
       {tab === 'json' && <JsonEditor chart={props.chart} onChange={props.onChange} />}
     </aside>
   )

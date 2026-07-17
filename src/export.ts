@@ -93,6 +93,14 @@ export function exportJson(chart: OrgChart): void {
   )
 }
 
+/** Download a library pack (or any JSON value) as a `.json` file. */
+export function exportLibraryPack(pack: unknown, name = 'proposal-cop-library'): void {
+  download(
+    new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' }),
+    `${safeName(name)}.json`,
+  )
+}
+
 /** Download prebuilt CSV text as `<title>-<suffix>.csv`. */
 export function exportCsv(csv: string, title: string, suffix = 'compliance'): void {
   download(
