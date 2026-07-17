@@ -925,6 +925,146 @@ function complianceCrosswalk(): OrgChart {
   }
 }
 
+/** Shared builder for a table-layout chart (hidden placeholder root + table). */
+function tableChart(title: string, caption: string, table: OrgChart['table']): OrgChart {
+  return {
+    version: 1,
+    meta: { title, showTitle: true, layout: 'table', caption },
+    roots: tableRoots(),
+    groups: [],
+    comms: [],
+    legend: [],
+    table,
+  }
+}
+
+/** Template 14 — past-performance relevance matrix (CPARS). */
+function relevanceMatrix(): OrgChart {
+  const row = (contract: string, cust: string, val: string, match: string, cpars: TableCell) => ({
+    cells: [cell(contract), cell(cust), cell(val), cell(match), cpars],
+  })
+  return tableChart(
+    'Past-Performance Relevance Matrix',
+    "Relevance is judged against this RFP's scope, size, and complexity; CPARS ratings are from the referenced periods.",
+    {
+      columns: [
+        { label: 'Contract', width: 200, align: 'left' },
+        { label: 'Customer', width: 140, align: 'left' },
+        { label: 'Value / Period', width: 140, align: 'left' },
+        { label: 'Scope Relevance' },
+        { label: 'CPARS' },
+      ],
+      rows: [
+        row('AEDC Test Operations Support', 'USAF AFTC', '$180M / 2019–24', 'High', cell('Exceptional', 'good')),
+        row('Propulsion Test Services', 'NASA SSC', '$95M / 2020–25', 'High', cell('Very Good', 'good')),
+        row('Range Instrumentation', 'USSF SLD 45', '$60M / 2018–23', 'Medium', cell('Satisfactory', 'warn')),
+        row('Base Ops & Sustainment', 'USAF AFMC', '$120M / 2021–26', 'High', cell('Exceptional', 'good')),
+      ],
+    },
+  )
+}
+
+/** Template 15 — labor-category / skills matrix mapped to PWS. */
+function skillsMatrix(): OrgChart {
+  const row = (labcat: string, skills: string, pws: string, fte: string) => ({
+    cells: [cell(labcat), cell(skills), cell(pws), cell(fte)],
+  })
+  return tableChart(
+    'Labor Category & Skills Matrix',
+    'Key labor categories mapped to the PWS tasks they cover and the skills and certifications required.',
+    {
+      columns: [
+        { label: 'Labor Category', width: 190, align: 'left' },
+        { label: 'Key Skills / Certifications', width: 240, align: 'left' },
+        { label: 'PWS Tasks' },
+        { label: 'FTE' },
+      ],
+      rows: [
+        row('Program Manager', 'PMP, DAWIA; 15+ yrs test operations', '2.1, 3.4', '1'),
+        row('Test Engineer (Senior)', 'Instrumentation, DAQ, test conduct', '3.1–3.3', '8'),
+        row('Systems Engineer', 'INCOSE CSEP; MBSE / modeling', '3.6, 3.7', '5'),
+        row('Cyber / RMF Analyst', 'CISSP; RMF, eMASS, cATO', '3.10', '3'),
+        row('Quality / Safety Lead', 'ASQ CMQ/OE; ISO 9001', '3.14, 3.24', '2'),
+      ],
+    },
+  )
+}
+
+/** Template 16 — requirements-to-solution traceability. */
+function traceabilityMatrix(): OrgChart {
+  const row = (req: string, sol: string, proof: string, vol: string) => ({
+    cells: [cell(req), cell(sol), cell(proof), cell(vol)],
+  })
+  return tableChart(
+    'Requirements-to-Solution Traceability',
+    'Each requirement is traced to our solution and the proof that we deliver it.',
+    {
+      columns: [
+        { label: 'Requirement (PWS)', width: 150, align: 'left' },
+        { label: 'Our Solution', width: 230, align: 'left' },
+        { label: 'Proof / Evidence', width: 220, align: 'left' },
+        { label: 'Vol Ref' },
+      ],
+      rows: [
+        row('3.1 Turbine test', 'Certified test-cell teams + digital DAQ', 'AEDC CPARS Exceptional; 99.9% availability', 'Vol I §2.1'),
+        row('3.6 Instrumentation', 'ID&C lab + calibration program', 'ISO 17025 accreditation', 'Vol I §2.3'),
+        row('3.10 Digital modernization', 'DevSecOps pipeline; continuous ATO', 'NASA cloud-migration case study', 'Vol I §2.4'),
+        row('2.4 Staffing', '90-day phase-in; 95% incumbent capture', 'Transition plan; commitment letters', 'Vol I §4'),
+      ],
+    },
+  )
+}
+
+/** Template 17 — us-vs-status-quo comparison. */
+function comparisonMatrix(): OrgChart {
+  const row = (dim: string, sq: string, ours: string, outcome: TableCell) => ({
+    cells: [cell(dim), cell(sq), cell(ours), outcome],
+  })
+  return tableChart(
+    'Our Approach vs. the Status Quo',
+    'How our approach improves on the current state across the dimensions the customer cares about.',
+    {
+      columns: [
+        { label: 'Dimension', width: 160, align: 'left' },
+        { label: 'Status Quo / Incumbent', width: 220, align: 'left' },
+        { label: 'Astrion Approach', width: 230, align: 'left' },
+        { label: 'Outcome' },
+      ],
+      rows: [
+        row('Transition risk', '12-month ramp with coverage gaps', 'Proven 90-day phase-in, 95% capture', cell('Faster, safer', 'good')),
+        row('Availability', '~98%, reactive maintenance', 'Predictive maintenance + monitoring', cell('99.9%', 'good')),
+        row('Cost', 'Fixed staffing, limited automation', 'Automation + right-sized labor mix', cell('−12% O&M', 'good')),
+        row('Cyber posture', 'Legacy ATO, manual controls', 'Zero Trust + continuous ATO', cell('Continuous ATO', 'good')),
+      ],
+    },
+  )
+}
+
+/** Template 18 — capability-to-requirement mapping. */
+function capabilityMap(): OrgChart {
+  const row = (req: string, cap: string, maturity: TableCell, evidence: string) => ({
+    cells: [cell(req), cell(cap), maturity, cell(evidence)],
+  })
+  return tableChart(
+    'Capability-to-Requirement Mapping',
+    'Every RFP capability requirement mapped to a proven Astrion capability, with maturity and evidence.',
+    {
+      columns: [
+        { label: 'RFP Requirement', width: 210, align: 'left' },
+        { label: 'Astrion Capability', width: 220, align: 'left' },
+        { label: 'Maturity' },
+        { label: 'Evidence', width: 170, align: 'left' },
+      ],
+      rows: [
+        row('Full-spectrum test operations', '5 test complexes, 400+ engineers', cell('Operational', 'good'), 'AEDC, NASA SSC'),
+        row('Digital engineering / MBSE', 'DE center of excellence', cell('Operational', 'good'), 'INCOSE awards'),
+        row('Cyber / RMF at scale', 'RMF factory, eMASS automation', cell('Scaling', 'warn'), 'DoD ATOs'),
+        row('OCONUS surge', 'Deployable field teams', cell('Developing', 'warn'), 'CENTCOM support'),
+      ],
+    },
+  )
+}
+
 export const templates: { key: string; label: string; build: () => OrgChart }[] = [
   { key: 'simple-hierarchy', label: 'Simple Hierarchy (clean top-down)', build: simpleHierarchy },
   { key: 'functional-divisions', label: 'Functional Divisions (department stacks)', build: functionalDivisions },
@@ -936,6 +1076,11 @@ export const templates: { key: string; label: string; build: () => OrgChart }[] 
   { key: 'raci', label: 'RACI Matrix (responsibility)', build: raciMatrix },
   { key: 'qasp', label: 'QASP / SLA Metrics (table)', build: qaspMetrics },
   { key: 'crosswalk', label: 'Section L-to-M Crosswalk (table)', build: complianceCrosswalk },
+  { key: 'relevance', label: 'Relevance Matrix (past performance)', build: relevanceMatrix },
+  { key: 'skills', label: 'Labor Category & Skills Matrix', build: skillsMatrix },
+  { key: 'traceability', label: 'Requirements Traceability (table)', build: traceabilityMatrix },
+  { key: 'comparison', label: 'Us vs. Status Quo (comparison)', build: comparisonMatrix },
+  { key: 'capability-map', label: 'Capability-to-Requirement Map', build: capabilityMap },
   { key: 'joint-venture', label: 'Joint Venture (board, PMO & TMs)', build: jointVenture },
   { key: 'mentor-protege', label: 'Mentor-Protégé JV (multi-site)', build: mentorProtege },
   { key: 'pmo-comms', label: 'PMO (lines of communication)', build: pmoComms },
