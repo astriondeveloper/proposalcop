@@ -921,6 +921,8 @@ export default function App() {
           )}
         </div>
       </div>
+
+      <footer className="app-footer">Created by Gavin Taylor</footer>
     </div>
   )
 }
